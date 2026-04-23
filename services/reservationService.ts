@@ -1,0 +1,123 @@
+import api from '@/lib/api';
+import type { Reservation, ReservationStatus } from '@/types/reservation';
+
+export async function createReservation(data: Omit<Reservation, 'id' | 'createdAt' | 'queuePosition' | 'status'>): Promise<string> {
+  const res = await api.post('/reservations', data);
+  return res.data.id;
+}
+
+export async function getReservationsForDoctor(doctorId: string, date: Date): Promise<Reservation[]> {
+  const res = await api.get('/reservations/doctor', {
+    params: { 
+      doctorId,
+      date: date.toISOString().split('T')[0] 
+    }
+  });
+  return res.data;
+}
+
+export async function getReservationsForPatient(patientId: string): Promise<Reservation[]> {
+  const res = await api.get('/reservations/patient');
+  return res.data;
+}
+
+export async function getUpcomingReservationForPatient(): Promise<Reservation | null> {
+  try {
+    const res = await api.get('/reservations/patient/upcoming');
+    return res.data;
+  } catch {
+    return null;
+  }
+}
+
+export async function cancelReservation(reservationId: string, patientId: string, patientName: string): Promise<void> {
+  await api.patch(`/reservations/${reservationId}/status`, {
+    status: 'cancelled',
+  });
+}
+
+export async function updateReservationStatus(reservationId: string, status: ReservationStatus, extra?: Partial<Reservation>) {
+  await api.patch(`/reservations/${reservationId}/status`, {
+    status,
+    ...extra,
+  });
+}
+
+export async function insertEmergencyPatient(
+  doctorId: string,
+  patientName: string,
+  patientMobile: string,
+  date: Date,
+  doctorName: string,
+  clinicName: string,
+): Promise<string> {
+  const res = await api.post('/reservations', {
+    doctorId,
+    patientName,
+    patientMobile,
+    dateTime: date,
+    doctorName,
+    clinicName,
+    isEmergency: true,
+  });
+  return res.data.id;
+}
+
+// Logic moved to backend, but helper can stay if needed for UI slot generation
+export async function getAvailableTimeSlots(doctorId: string, date: Date, slotDurationMinutes: number, schedule: any): Promise<string[]> {
+  // For now, keep the client-side logic to generate slots, but it should ideally be a backend call
+  // To keep it simple, I'll just fetch current reservations and filter
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayName = dayNames[date.getDay()];
+  const daySchedule = schedule[dayName];
+  if (!daySchedule) return [];
+
+  const slots: string[] = [];
+  const [startH, startM] = daySchedule.start.split(':').map(Number);
+  const [endH, endM] = daySchedule.end.split(':').map(Number);
+  let current = startH * 60 + startM;
+  const endTotal = endH * 60 + endM;
+
+  while (current + slotDurationMinutes <= endTotal) {
+    if (daySchedule.hasBreak && daySchedule.breakStart && daySchedule.breakEnd) {
+      const [bsH, bsM] = daySchedule.breakStart.split(':').map(Number);
+      const [beH, beM] = daySchedule.breakEnd.split(':').map(Number);
+      const bsTotal = bsH * 60 + bsM;
+      const beTotal = beH * 60 + beM;
+      if (current >= bsTotal && current < beTotal) {
+        current = beTotal;
+        continue;
+      }
+    }
+    const h = Math.floor(current / 60).toString().padStart(2, '0');
+    const m = (current % 60).toString().padStart(2, '0');
+    slots.push(`${h}:${m}`);
+    current += slotDurationMinutes;
+  }
+
+  const reservations = await getReservationsForDoctor(doctorId, date);
+  const bookedTimes = reservations
+    .filter(r => r.status !== 'cancelled')
+    .map(r => {
+      const d = new Date(r.dateTime);
+      return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    });
+
+  return slots.filter(s => !bookedTimes.includes(s));
+}
+
+// Polling fallback instead of onSnapshot
+export function subscribeToQueue(doctorId: string, date: Date, callback: (reservations: Reservation[]) => void): () => void {
+  const fetch = async () => {
+    try {
+      const res = await getReservationsForDoctor(doctorId, date);
+      callback(res);
+    } catch (e) {
+      console.error('Queue poll failed', e);
+    }
+  };
+
+  fetch();
+  const interval = setInterval(fetch, 10000); // Poll every 10s
+  return () => clearInterval(interval);
+}

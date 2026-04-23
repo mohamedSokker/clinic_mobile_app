@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 56% 7%;
+    --foreground: 225 87% 95%;
+    --card: 220 56% 10%;
+    --card-foreground: 225 87% 95%;
+    --popover: 220 56% 10%;
+    --popover-foreground: 225 87% 95%;
+    --primary: 192 88% 60%;
+    --primary-foreground: 220 56% 7%;
+    --secondary: 273 100% 75%;
+    --secondary-foreground: 220 56% 7%;
+    --muted: 220 56% 15%;
+    --muted-foreground: 225 9% 65%;
+    --accent: 273 100% 75%;
+    --accent-foreground: 220 56% 7%;
+    --destructive: 359 100% 71%;
+    --destructive-foreground: 225 87% 95%;
+    --border: 225 9% 25%;
+    --input: 225 9% 25%;
+    --ring: 192 88% 60%;
+    --radius: 8px;
+
+    /* Clinic brand colors (MediFlow Health Hub) */
+    --clinic-primary: #40cef3;
+    --clinic-secondary: #c57eff;
+    --clinic-background: #070e1a;
+    --clinic-surface: #111a28;
+    --clinic-glass: rgba(7, 14, 26, 0.6);
+    --clinic-glass-border: rgba(111, 117, 133, 0.2);
+    --clinic-success: #10B981;
+    --clinic-warning: #F59E0B;
+    --clinic-danger: #ff716c;
+    --clinic-emergency: #FF6B35;
+  }
+
+  .dark {
+    --background: 220 56% 7%;
+    --foreground: 225 87% 95%;
+  }
+}
