@@ -37,11 +37,20 @@ export async function getDoctorByUid(uid: string): Promise<Doctor | null> {
   }
 }
 
-export async function getAllDoctors(specializationFilter?: string): Promise<Doctor[]> {
+export async function getAllDoctors(
+  specializationFilter?: string,
+  lat?: number,
+  lng?: number,
+  radius?: number,
+): Promise<Doctor[]> {
   const params: any = {};
   if (specializationFilter && specializationFilter !== 'all') {
     params.specialization = specializationFilter;
   }
+  if (lat !== undefined) params.lat = lat;
+  if (lng !== undefined) params.lng = lng;
+  if (radius !== undefined) params.radius = radius;
+
   const res = await api.get('/doctors', { params });
   return res.data.map((doctor: any) => ({
     ...doctor,

@@ -5,12 +5,42 @@ export async function createReservation(data: Omit<Reservation, 'id' | 'createdA
   const res = await api.post('/reservations', data);
   return res.data.id;
 }
+export async function getReservationById(id: string): Promise<Reservation> {
+  const res = await api.get(`/reservations/${id}`);
+  return res.data;
+}
 
 export async function getReservationsForDoctor(doctorId: string, date: Date): Promise<Reservation[]> {
+  // Format as YYYY-MM-DD using local time to avoid timezone shifts
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const localDateStr = `${year}-${month}-${day}`;
+
   const res = await api.get('/reservations/doctor', {
     params: { 
       doctorId,
-      date: date.toISOString().split('T')[0] 
+      date: localDateStr
+    }
+  });
+  return res.data;
+}
+
+export async function getPaginatedReservationsForDoctor(
+  date: Date,
+  page: number = 1,
+  perPage: number = 3,
+): Promise<{ reservations: Reservation[]; total: number; totalPages: number; page: number }> {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const localDateStr = `${year}-${month}-${day}`;
+
+  const res = await api.get('/reservations/doctor/paginated', {
+    params: { 
+      date: localDateStr,
+      page,
+      per_page: perPage
     }
   });
   return res.data;
@@ -64,9 +94,12 @@ export async function insertEmergencyPatient(
 }
 
 // Logic moved to backend, but helper can stay if needed for UI slot generation
-export async function getAvailableTimeSlots(doctorId: string, date: Date, slotDurationMinutes: number, schedule: any): Promise<string[]> {
-  // For now, keep the client-side logic to generate slots, but it should ideally be a backend call
-  // To keep it simple, I'll just fetch current reservations and filter
+export async function getAvailableTimeSlots(
+  doctorId: string,
+  date: Date,
+  slotDurationMinutes: number,
+  schedule: any
+): Promise<{ time: string; taken: boolean }[]> {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const dayName = dayNames[date.getDay()];
   const daySchedule = schedule[dayName];
@@ -103,7 +136,20 @@ export async function getAvailableTimeSlots(doctorId: string, date: Date, slotDu
       return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
     });
 
-  return slots.filter(s => !bookedTimes.includes(s));
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  return slots
+    .filter(s => {
+      if (!isToday) return true;
+      const [h, m] = s.split(':').map(Number);
+      return h * 60 + m > currentMinutes;
+    })
+    .map(s => ({
+      time: s,
+      taken: bookedTimes.includes(s),
+    }));
 }
 
 // Polling fallback instead of onSnapshot

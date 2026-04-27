@@ -1,85 +1,222 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
-  View, Text, ScrollView, TextInput, TouchableOpacity,
-  StyleSheet, SafeAreaView,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Plus, Syringe, FileText, ArrowRightLeft, Calendar } from 'lucide-react-native';
-import { Avatar } from '@/components/ui/Avatar';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { GradientButton } from '@/components/ui/GradientButton';
-import { useAuthStore } from '@/stores/authStore';
-import { getDoctorByUid } from '@/services/doctorService';
+  View,
+  Text,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  getDiagnosisByReservation, createDiagnosis,
-  updateDiagnosis, addVaccineToDiagnosis,
-} from '@/services/diagnosisService';
-import { getReservationsForPatient } from '@/services/reservationService';
-import { COLORS, FONT_SIZE, SPACING, RADIUS, FONT_FAMILY, GRADIENTS } from '@/lib/theme';
-import type { Diagnosis, Vaccine } from '@/types/diagnosis';
-import Toast from 'react-native-toast-message';
-import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+  ArrowLeft,
+  Plus,
+  Syringe,
+  FileText,
+  X,
+  Search,
+  CheckCircle2,
+} from "lucide-react-native";
+import { Avatar } from "@/components/ui/Avatar";
+import { GlassCard } from "@/components/ui/GlassCard";
+import { GradientButton } from "@/components/ui/GradientButton";
+import { useAuthStore } from "@/stores/authStore";
+import { getDoctorByUid } from "@/services/doctorService";
+import {
+  getDiagnosisByReservation,
+  createDiagnosis,
+  updateDiagnosis,
+} from "@/services/diagnosisService";
+import {
+  getReservationById,
+  getReservationsForPatient,
+} from "@/services/reservationService";
+import {
+  COLORS,
+  FONT_SIZE,
+  SPACING,
+  RADIUS,
+  FONT_FAMILY,
+  GRADIENTS,
+} from "@/lib/theme";
+import type { Diagnosis, Vaccine } from "@/types/diagnosis";
+import Toast from "react-native-toast-message";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+
+const DIAGNOSIS_SUGGESTIONS = [
+  "Hypertension",
+  "Diabetes Mellitus Type 2",
+  "Acute Pharyngitis",
+  "Gastroenteritis",
+  "Bronchial Asthma",
+  "Allergic Rhinitis",
+  "Common Cold",
+  "Influenza",
+  "Anemia",
+  "UTI",
+  "Otitis Media",
+  "Bronchitis",
+  "Dermatitis",
+];
+
+const VACCINE_SUGGESTIONS = [
+  "BCG",
+  "Hepatitis B",
+  "DTP (Diphtheria, Tetanus, Pertussis)",
+  "Polio (IPV)",
+  "Measles",
+  "MMR (Measles, Mumps, Rubella)",
+  "COVID-19",
+  "Influenza",
+  "Varicella",
+  "Hepatitis A",
+  "Rotavirus",
+  "Pneumococcal",
+];
 
 export default function PatientProfileScreen() {
   const { id: patientId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const { user, loading: authLoading, profile: doctorProfile } = useAuthStore();
+  const { reservationId: passedResId } = useLocalSearchParams<{ reservationId: string }>();
 
-  const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
-  const [notes, setNotes] = useState('');
-  const [prescriptions, setPrescriptions] = useState('');
+  const [localDiagnosis, setLocalDiagnosis] = useState<Diagnosis | null>(null);
+  const [notes, setNotes] = useState("");
+  const [vaccines, setVaccines] = useState<Omit<Vaccine, "id">[]>([]);
   const [saving, setSaving] = useState(false);
-  const [addingVaccine, setAddingVaccine] = useState(false);
-  const [vaccineName, setVaccineName] = useState('');
-  const [vaccineDate, setVaccineDate] = useState('');
 
-  const { data: doctorInfo } = useQuery({
-    queryKey: ['doctor', user?.uid],
-    queryFn: async () => {
-      const doc = await getDoctorByUid(user!.uid);
-      if (!doc) throw new Error('Doctor not found');
-      return { id: doc.id, name: doc.doctorName, clinicName: doc.clinicName };
-    },
-    enabled: !!user,
+  // Autocomplete states
+  const [filteredDiagnoses, setFilteredDiagnoses] = useState<string[]>([]);
+  const [showDiagSuggestions, setShowDiagSuggestions] = useState(false);
+  const [filteredVaccines, setFilteredVaccines] = useState<string[]>([]);
+  const [showVacSuggestions, setShowVacSuggestions] = useState<number | null>(null);
+
+  // Use reservationId from params if available, otherwise we'd need to find it
+  // But our dashboard and queue now pass it, so it should be there.
+  const effectiveReservationId = passedResId;
+
+  const { data: reservationData, isLoading: resLoading } = useQuery({
+    queryKey: ["reservation", effectiveReservationId],
+    queryFn: () => getReservationById(effectiveReservationId!),
+    enabled: !!effectiveReservationId,
+    retry: false,
   });
 
-  const { data: reservations } = useQuery({
-    queryKey: ['patient-reservations', patientId],
-    queryFn: () => getReservationsForPatient(patientId),
-    enabled: !!patientId,
+  const { data: diagnosisData, isLoading: diagLoading } = useQuery({
+    queryKey: ["diagnosis", effectiveReservationId],
+    queryFn: () => getDiagnosisByReservation(effectiveReservationId!),
+    enabled: !!effectiveReservationId,
+    retry: false, // Don't retry if not found; it might be a new diagnosis
   });
 
-  const reservation = useMemo(() => {
-    if (!reservations || !doctorInfo) return null;
-    return reservations.find(r => r.doctorId === doctorInfo.id && r.status !== 'cancelled') || null;
-  }, [reservations, doctorInfo]);
+  const doctorInfo = useMemo(() => {
+    if (!doctorProfile) return null;
+    return {
+      id: (doctorProfile as any).doctor?.id || doctorProfile.id,
+      name: (doctorProfile as any).doctorName || doctorProfile.name,
+      clinicName: (doctorProfile as any).clinicName,
+    };
+  }, [doctorProfile]);
 
-  const { data: diagnosisData } = useQuery({
-    queryKey: ['diagnosis', reservation?.id],
-    queryFn: () => getDiagnosisByReservation(reservation!.id),
-    enabled: !!reservation?.id,
-  });
+  const currentReservation = reservationData || null;
 
   useEffect(() => {
     if (diagnosisData) {
-      setDiagnosis(diagnosisData);
-      setNotes(diagnosisData.notes);
-      setPrescriptions(diagnosisData.prescriptions ?? '');
+      setLocalDiagnosis(diagnosisData);
+      setNotes(diagnosisData.notes || "");
+      setVaccines(diagnosisData.vaccines || []);
     }
   }, [diagnosisData]);
 
-  const patientName = reservation?.patientName ?? 'Patient';
-  const reservationId = reservation?.id ?? '';
+  const patientName = currentReservation?.patientName ?? "Patient";
+  const reservationId = currentReservation?.id ?? "";
+
+  const handleDiagnosisSearch = (text: string) => {
+    setNotes(text);
+    if (text.length > 0) {
+      const filtered = DIAGNOSIS_SUGGESTIONS.filter((item) =>
+        item.toLowerCase().includes(text.toLowerCase()),
+      );
+      setFilteredDiagnoses(filtered);
+      setShowDiagSuggestions(true);
+    } else {
+      setShowDiagSuggestions(false);
+    }
+  };
+
+  const handleVaccineSearch = (text: string, index: number) => {
+    const updated = [...vaccines];
+    updated[index].name = text;
+    setVaccines(updated);
+
+    if (text.length > 0) {
+      const filtered = VACCINE_SUGGESTIONS.filter((item) =>
+        item.toLowerCase().includes(text.toLowerCase()),
+      );
+      setFilteredVaccines(filtered);
+      setShowVacSuggestions(index);
+    } else {
+      setShowVacSuggestions(null);
+    }
+  };
+
+  const addVaccineField = () => {
+    setVaccines([
+      ...vaccines,
+      {
+        name: "",
+        date: new Date().toISOString().split("T")[0],
+        dose: "",
+      },
+    ]);
+  };
+
+  const removeVaccineField = (index: number) => {
+    setVaccines(vaccines.filter((_, i) => i !== index));
+  };
+
+  const updateVaccine = (
+    index: number,
+    field: keyof Omit<Vaccine, "id">,
+    value: string,
+  ) => {
+    const updated = [...vaccines];
+    updated[index] = { ...updated[index], [field]: value };
+    setVaccines(updated);
+  };
 
   const handleSave = async () => {
-    if (!doctorInfo || !patientId) return;
+    if (!doctorInfo || !patientId || !reservationId) {
+      Toast.show({ type: "error", text1: "No active reservation found" });
+      return;
+    }
+
     setSaving(true);
     try {
-      if (diagnosis) {
-        await updateDiagnosis(diagnosis.id, { notes, prescriptions });
-        Toast.show({ type: 'success', text1: '✅ Diagnosis updated' });
+      // Ensure all vaccines have an ID if they are new
+      const formattedVaccines = vaccines.map((v) => ({
+        ...v,
+        id: (v as any).id || Math.random().toString(36).substr(2, 9),
+      }));
+
+      const payload = {
+        notes,
+        vaccines: formattedVaccines,
+      };
+
+      if (localDiagnosis) {
+        await updateDiagnosis(localDiagnosis.id, payload as any);
+        Toast.show({
+          type: "success",
+          text1: "✅ Record updated successfully",
+        });
       } else {
         await createDiagnosis({
           reservationId,
@@ -89,211 +226,540 @@ export default function PatientProfileScreen() {
           clinicName: doctorInfo.clinicName,
           visitDate: new Date(),
           notes,
-          prescriptions,
-        });
-        const freshDiag = await getDiagnosisByReservation(reservationId);
-        setDiagnosis(freshDiag);
-        Toast.show({ type: 'success', text1: '✅ Diagnosis created' });
+          vaccines: formattedVaccines,
+          analysisFiles: [],
+        } as any);
+        Toast.show({ type: "success", text1: "✅ New record created" });
       }
-    } catch {
-      Toast.show({ type: 'error', text1: 'Failed to save diagnosis' });
-    } finally { setSaving(false); }
-  };
 
-  const handleAddVaccine = async () => {
-    if (!vaccineName || !diagnosis) return;
-    const vaccine: Vaccine = {
-      id: Date.now().toString(),
-      name: vaccineName.trim(),
-      date: vaccineDate || new Date().toISOString().split('T')[0],
-    };
-    try {
-      await addVaccineToDiagnosis(diagnosis.id, vaccine);
-      setDiagnosis(prev => prev ? { ...prev, vaccines: [...prev.vaccines, vaccine] } : prev);
-      setVaccineName(''); setVaccineDate('');
-      setAddingVaccine(false);
-      Toast.show({ type: 'success', text1: '💉 Vaccine added' });
-    } catch {
-      Toast.show({ type: 'error', text1: 'Failed to add vaccine' });
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ["diagnosis", reservationId] });
+    } catch (error) {
+      console.error("Save Error:", error);
+      Toast.show({ type: "error", text1: "Failed to save record" });
+    } finally {
+      setSaving(false);
     }
   };
 
+  if (authLoading || resLoading || diagLoading) {
+    return (
+      <View style={s.centerContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={GRADIENTS.background as any} style={StyleSheet.absoluteFill} />
-      <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <ArrowLeft size={20} color={COLORS.onSurfaceVariant} />
-            </TouchableOpacity>
-            <View style={styles.patientHero}>
-              <Avatar name={patientName} size={60} />
-              <Text style={styles.patientName}>{patientName}</Text>
-            </View>
-          </View>
-
-          {/* Diagnosis */}
-          <GlassCard style={styles.section} variant="strong" radius={RADIUS.xl}>
-            <View style={styles.sectionHeader}>
-              <FileText size={18} color={COLORS.secondary} />
-              <Text style={styles.sectionTitle}>Diagnosis & Notes</Text>
-            </View>
-            <TextInput
-              style={styles.textArea}
-              placeholder="Write diagnosis notes, observations, and recommendations..."
-              placeholderTextColor="rgba(229, 235, 253, 0.2)"
-              value={notes}
-              onChangeText={setNotes}
-              multiline numberOfLines={5}
-              textAlignVertical="top"
-              selectionColor={COLORS.secondary}
-            />
-            <TextInput
-              style={[styles.textArea, { height: 80 }]}
-              placeholder="Prescriptions..."
-              placeholderTextColor="rgba(229, 235, 253, 0.2)"
-              value={prescriptions}
-              onChangeText={setPrescriptions}
-              multiline numberOfLines={3}
-              textAlignVertical="top"
-              selectionColor={COLORS.secondary}
-            />
-            <GradientButton
-              onPress={handleSave}
-              label={diagnosis ? 'Update Diagnosis' : 'Save Diagnosis'}
-              loading={saving}
-              variant="secondary"
-              size="md"
-            />
-          </GlassCard>
-
-          {/* Vaccines */}
-          <GlassCard style={styles.section} variant="subtle" radius={RADIUS.xl}>
-            <View style={styles.sectionHeader}>
-              <Syringe size={18} color={COLORS.success} />
-              <Text style={styles.sectionTitle}>Vaccines</Text>
-              <TouchableOpacity onPress={() => setAddingVaccine(v => !v)} style={styles.addBtn}>
-                <Plus size={16} color={COLORS.primary} />
+    <View style={s.container}>
+      <LinearGradient
+        colors={GRADIENTS.background as any}
+        style={StyleSheet.absoluteFill}
+      />
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            contentContainerStyle={s.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Header */}
+            <View style={s.header}>
+              <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+                <ArrowLeft size={24} color="#fff" />
               </TouchableOpacity>
+              <View style={s.headerTitleContainer}>
+                <Text style={s.greetingText}>Clinical Record</Text>
+                <Text style={s.titleText} numberOfLines={1}>
+                  {patientName}
+                </Text>
+              </View>
             </View>
 
-            {diagnosis?.vaccines.map((v, i) => (
-              <View key={i} style={styles.vaccineRow}>
-                <View style={styles.vaccineDot} />
-                <Text style={styles.vaccineName}>{v.name}</Text>
-                <Text style={styles.vaccineDate}>{v.date}</Text>
+            {/* Diagnosis Section */}
+            <View style={s.contentSection}>
+              <View style={s.inputHeader}>
+                <Text style={s.inputLabel}>DIAGNOSIS & NOTES</Text>
+                {notes.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setNotes("");
+                      setShowDiagSuggestions(false);
+                    }}
+                  >
+                    <Text style={s.clearText}>Clear</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            ))}
 
-            {addingVaccine && (
-              <View style={styles.addVaccineForm}>
+              <View style={s.searchContainer}>
                 <TextInput
-                  style={styles.smallInput}
-                  placeholder="Vaccine name"
-                  placeholderTextColor="rgba(229, 235, 253, 0.25)"
-                  value={vaccineName}
-                  onChangeText={setVaccineName}
-                  selectionColor={COLORS.primary}
+                  style={s.textInput}
+                  placeholder="Enter diagnosis or clinical notes..."
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={notes}
+                  onChangeText={handleDiagnosisSearch}
+                  onFocus={() =>
+                    notes.length > 0 && setShowDiagSuggestions(true)
+                  }
+                  multiline
                 />
-                <TextInput
-                  style={styles.smallInput}
-                  placeholder="Date (YYYY-MM-DD)"
-                  placeholderTextColor="rgba(229, 235, 253, 0.25)"
-                  value={vaccineDate}
-                  onChangeText={setVaccineDate}
-                  selectionColor={COLORS.primary}
-                />
-                <GradientButton
-                  onPress={handleAddVaccine}
-                  label="Add Vaccine"
-                  size="sm"
-                  disabled={!diagnosis}
+                <FileText
+                  size={18}
+                  color="rgba(255,255,255,0.4)"
+                  style={s.searchIcon}
                 />
               </View>
-            )}
-            {!diagnosis && addingVaccine && (
-              <Text style={styles.saveFirstHint}>Save diagnosis first, then add vaccines</Text>
-            )}
-          </GlassCard>
 
-          {/* Actions */}
-          <View style={styles.actionsRow}>
-            <GradientButton
-              onPress={() => router.push('/(doctor)/transfer')}
-              label="Transfer"
-              variant="ghost"
-              size="md"
-              icon={<ArrowRightLeft size={16} color={COLORS.primary} />}
-              style={{ flex: 1 }}
-            />
-            <GradientButton
-              onPress={() => {}}
-              label="Follow-up"
-              variant="ghost"
-              size="md"
-              icon={<Calendar size={16} color={COLORS.primary} />}
-              style={{ flex: 1 }}
-            />
-          </View>
-
-          {/* Lab files */}
-          {diagnosis && diagnosis.analysisFiles.length > 0 && (
-            <GlassCard style={styles.section} variant="secondary" radius={RADIUS.xl}>
-              <Text style={styles.sectionTitle}>Lab Analysis Files</Text>
-              {diagnosis.analysisFiles.map((f, i) => (
-                <View key={i} style={styles.fileRow}>
-                  <Text style={styles.fileName}>{f.fileName}</Text>
-                  <Text style={styles.fileType}>{f.type.toUpperCase()}</Text>
+              {showDiagSuggestions && filteredDiagnoses.length > 0 && (
+                <View style={s.suggestionsContainer}>
+                  {filteredDiagnoses.map((item, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={s.suggestionItem}
+                      onPress={() => {
+                        setNotes(item);
+                        setShowDiagSuggestions(false);
+                      }}
+                    >
+                      <CheckCircle2
+                        size={16}
+                        color={COLORS.primary}
+                        style={{ marginRight: 10 }}
+                      />
+                      <Text style={s.suggestionText}>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              ))}
-            </GlassCard>
-          )}
-        </ScrollView>
+              )}
+            </View>
+
+            {/* Vaccines Section */}
+            <View style={[s.contentSection, { marginTop: 32 }]}>
+              <View style={s.inputHeader}>
+                <Text style={s.inputLabel}>VACCINATIONS</Text>
+                <TouchableOpacity
+                  onPress={addVaccineField}
+                  style={s.addBtnSmall}
+                >
+                  <Plus size={14} color="#fff" />
+                  <Text style={s.addBtnText}>ADD VACCINE</Text>
+                </TouchableOpacity>
+              </View>
+
+              {vaccines.length === 0 ? (
+                <View style={s.emptyState}>
+                  <Text style={s.emptyStateText}>
+                    No vaccines added for this visit.
+                  </Text>
+                </View>
+              ) : (
+                vaccines.map((v, index) => (
+                  <GlassCard
+                    key={index}
+                    style={s.vaccineCard}
+                    variant="subtle"
+                    radius={RADIUS.lg}
+                  >
+                    <View style={s.vaccineCardHeader}>
+                      <View style={s.vaccineIconContainer}>
+                        <Syringe size={14} color={COLORS.primary} />
+                        <Text style={s.vaccineCount}>VACCINE #{index + 1}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => removeVaccineField(index)}
+                        style={s.removeBtn}
+                      >
+                        <X size={16} color="rgba(255,255,255,0.5)" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Vaccine Name with Autocomplete */}
+                    <View style={s.searchContainer}>
+                      <TextInput
+                        style={s.fieldInput}
+                        placeholder="Vaccine Name"
+                        placeholderTextColor="rgba(255,255,255,0.2)"
+                        value={v.name}
+                        onChangeText={(txt) => handleVaccineSearch(txt, index)}
+                        onFocus={() =>
+                          v.name.length > 0 && setShowVacSuggestions(index)
+                        }
+                      />
+                    </View>
+
+                    {showVacSuggestions === index &&
+                      filteredVaccines.length > 0 && (
+                        <View style={s.suggestionsContainer}>
+                          {filteredVaccines.map((item, i) => (
+                            <TouchableOpacity
+                              key={i}
+                              style={s.suggestionItem}
+                              onPress={() => {
+                                updateVaccine(index, "name", item);
+                                setShowVacSuggestions(null);
+                              }}
+                            >
+                              <Plus
+                                size={14}
+                                color={COLORS.primary}
+                                style={{ marginRight: 8 }}
+                              />
+                              <Text style={s.suggestionText}>{item}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+
+                    <View style={s.row}>
+                      <View style={[s.fieldContainer, { flex: 1 }]}>
+                        <Text style={s.fieldLabel}>Date</Text>
+                        <TextInput
+                          style={s.fieldInput}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor="rgba(255,255,255,0.2)"
+                          value={v.date}
+                          onChangeText={(txt) =>
+                            updateVaccine(index, "date", txt)
+                          }
+                        />
+                      </View>
+                      <View
+                        style={[
+                          s.fieldContainer,
+                          { flex: 1.5, marginLeft: 12 },
+                        ]}
+                      >
+                        <Text style={s.fieldLabel}>Schedule / Dosage</Text>
+                        <TextInput
+                          style={s.fieldInput}
+                          placeholder="e.g. 1 per day"
+                          placeholderTextColor="rgba(255,255,255,0.2)"
+                          value={v.dose}
+                          onChangeText={(txt) =>
+                            updateVaccine(index, "dose", txt)
+                          }
+                        />
+                      </View>
+                    </View>
+                  </GlassCard>
+                ))
+              )}
+            </View>
+
+            {/* Action Section */}
+            <View style={s.footer}>
+              {currentReservation?.status !== "inside" && (
+                <Text style={s.warningText}>
+                  ⚠️ Patient must be "Inside" to save record
+                </Text>
+              )}
+              <GradientButton
+                label={localDiagnosis ? "Update Record" : "Save Record"}
+                onPress={handleSave}
+                loading={saving}
+                variant="primary"
+                disabled={
+                  (notes.trim().length === 0 &&
+                    (vaccines.length === 0 ||
+                      !vaccines.some((v) => v.name.trim().length > 0))) ||
+                  currentReservation?.status !== "inside"
+                }
+              />
+              <Text style={s.saveInfo}>
+                This information will be visible to the patient
+              </Text>
+            </View>
+
+            {/* Analysis Results Display */}
+            {localDiagnosis &&
+              localDiagnosis.analysisFiles &&
+              localDiagnosis.analysisFiles.length > 0 && (
+                <View style={[s.contentSection, { marginTop: 20 }]}>
+                  <Text style={[s.inputLabel, { marginBottom: 12 }]}>
+                    LAB ANALYSIS RESULTS
+                  </Text>
+                  <GlassCard
+                    style={s.labResultsCard}
+                    variant="secondary"
+                    radius={RADIUS.xl}
+                  >
+                    {localDiagnosis.analysisFiles.map((f, i) => (
+                      <View key={i} style={s.fileRow}>
+                        <View style={s.fileIconBg}>
+                          <FileText size={18} color={COLORS.primary} />
+                        </View>
+                        <View style={s.fileInfo}>
+                          <Text style={s.fileName} numberOfLines={1}>
+                            {f.fileName}
+                          </Text>
+                          <Text style={s.fileType}>
+                            {f.type.toUpperCase()} • {f.labName || "Laboratory"}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </GlassCard>
+                </View>
+              )}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
+      <Toast />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll: { padding: SPACING.xl, paddingBottom: 100, gap: SPACING.md },
-  header: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#0b0f19" },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0b0f19",
+  },
+  scrollContent: { paddingBottom: 60 },
+  header: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  headerTitleContainer: {
+    flex: 1,
+  },
   backBtn: {
-    width: 44, height: 44, borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surfaceContainer, borderWidth: 1,
-    borderColor: COLORS.glassBorder, alignItems: 'center', justifyContent: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  patientHero: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  patientName: { color: COLORS.onSurface, fontSize: FONT_SIZE.xl, fontFamily: FONT_FAMILY.headline },
-  section: { padding: SPACING.md, gap: SPACING.sm },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: 4 },
-  sectionTitle: { color: COLORS.onSurface, fontSize: FONT_SIZE.base, fontFamily: FONT_FAMILY.title, flex: 1 },
-  addBtn: {
-    width: 28, height: 28, borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(64, 206, 243, 0.1)', borderWidth: 1,
-    borderColor: 'rgba(64, 206, 243, 0.25)', alignItems: 'center', justifyContent: 'center',
+  greetingText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.label,
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
   },
-  textArea: {
-    backgroundColor: COLORS.surfaceContainerLow, borderRadius: RADIUS.md,
-    borderWidth: 1, borderColor: COLORS.glassBorder,
-    padding: SPACING.md, color: COLORS.onSurface, fontSize: FONT_SIZE.base, fontFamily: FONT_FAMILY.body,
-    minHeight: 120, textAlignVertical: 'top',
+  titleText: {
+    color: "#fff",
+    fontSize: 28,
+    fontFamily: FONT_FAMILY.headline,
+    fontWeight: "bold",
   },
-  vaccineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  vaccineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.success },
-  vaccineName: { color: COLORS.onSurface, fontSize: FONT_SIZE.sm, fontFamily: FONT_FAMILY.title, flex: 1 },
-  vaccineDate: { color: COLORS.onSurfaceVariant, fontSize: FONT_SIZE.xs, fontFamily: FONT_FAMILY.body },
-  addVaccineForm: { gap: SPACING.sm },
-  smallInput: {
-    backgroundColor: COLORS.surfaceContainerLow, borderRadius: RADIUS.md,
-    borderWidth: 1, borderColor: COLORS.glassBorder,
-    paddingHorizontal: SPACING.md, height: 44, color: COLORS.onSurface, fontSize: FONT_SIZE.sm, fontFamily: FONT_FAMILY.body,
+  contentSection: {
+    paddingHorizontal: 24,
   },
-  saveFirstHint: { color: COLORS.warning, fontSize: FONT_SIZE.xs, fontFamily: FONT_FAMILY.body },
-  actionsRow: { flexDirection: 'row', gap: SPACING.sm },
-  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fileName: { color: COLORS.onSurface, flex: 1, fontSize: FONT_SIZE.sm, fontFamily: FONT_FAMILY.body },
-  fileType: { color: COLORS.secondary, fontSize: FONT_SIZE.xs, fontFamily: FONT_FAMILY.label },
+  inputHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  inputLabel: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    fontWeight: "600",
+    letterSpacing: 2,
+  },
+  clearText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  searchContainer: {
+    position: "relative",
+    zIndex: 10,
+  },
+  searchIcon: {
+    position: "absolute",
+    right: 16,
+    top: 16,
+  },
+  textInput: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 20,
+    padding: 20,
+    color: "#fff",
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 16,
+    minHeight: 120,
+    textAlignVertical: "top",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  suggestionsContainer: {
+    backgroundColor: "#1a2235",
+    borderRadius: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    overflow: "hidden",
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  suggestionItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  suggestionText: {
+    color: "#fff",
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.body,
+  },
+  addBtnSmall: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(100, 100, 255, 0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(100, 100, 255, 0.3)",
+  },
+  addBtnText: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  emptyState: {
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: 20,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  emptyStateText: {
+    color: "rgba(255,255,255,0.3)",
+    fontSize: 14,
+    fontStyle: "italic",
+  },
+  vaccineCard: {
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  vaccineCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  vaccineIconContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  vaccineCount: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  removeBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,50,50,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fieldContainer: {
+    marginTop: 16,
+  },
+  fieldLabel: {
+    color: "rgba(255,255,255,0.3)",
+    fontSize: 11,
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    fontWeight: "600",
+  },
+  fieldInput: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 12,
+    padding: 14,
+    color: "#fff",
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  row: {
+    flexDirection: "row",
+  },
+  footer: {
+    padding: 24,
+    marginTop: 16,
+  },
+  saveInfo: {
+    color: "rgba(255,255,255,0.3)",
+    fontSize: 13,
+    textAlign: "center",
+    marginTop: 16,
+    fontFamily: FONT_FAMILY.body,
+  },
+  labResultsCard: { padding: 8, gap: 4 },
+  fileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    padding: 12,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  fileIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(100, 100, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fileInfo: {
+    flex: 1,
+  },
+  fileName: {
+    color: "#fff",
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.body,
+    fontWeight: "600",
+  },
+  fileType: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    marginTop: 2,
+  },
+  warningText: {
+    color: COLORS.warning,
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 12,
+    fontFamily: FONT_FAMILY.body,
+    fontWeight: "600",
+  },
 });

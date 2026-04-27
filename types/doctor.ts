@@ -42,6 +42,8 @@ export interface Doctor {
   workingDays: string[];
   slotDurationMinutes: number; // 15 | 20 | 30 | 45 | 60
   maxPatientsPerDay?: number;
+  latitude?: number;
+  longitude?: number;
   createdAt: Date;
 }
 

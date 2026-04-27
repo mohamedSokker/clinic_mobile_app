@@ -27,7 +27,7 @@ export async function uploadFile(
     return `${baseUrl}${response.data.url}`;
   } catch (err: any) {
     console.error('Backend Upload Error:', err?.response?.data || err.message);
-    throw new Error('Failed to upload image to server');
+    throw new Error('Failed to upload file to server');
   }
 }
 

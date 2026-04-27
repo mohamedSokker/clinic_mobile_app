@@ -65,7 +65,7 @@ export default function NotificationsScreen() {
         style={StyleSheet.absoluteFill}
       />
       <BackgroundDecor />
-      <SafeAreaView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <View style={styles.header}>
           <View>
             <Text style={styles.headerLabel}>ALERTS & UPDATES</Text>
@@ -145,7 +145,7 @@ export default function NotificationsScreen() {
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
         />
-      </SafeAreaView>
+      </View>
     </View>
   );
 }

@@ -56,6 +56,7 @@ export const GRADIENTS = {
   card: ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.03)'] as string[],
   emergency: ['#FF6B35', '#E53E3E'] as string[],
   success: ['#10B981', '#059669'] as string[],
+  glassStrong: ["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"] as string[],
 } as const;
 
 export const SPACING = {
@@ -118,14 +119,14 @@ export const SHADOWS = {
 
 // Specializations with updated color palette
 export const SPECIALIZATIONS = [
-  { id: 'general', label: 'General', icon: 'stethoscope', color: '#40cef3' },
+  { id: 'general', label: 'General Practice', icon: 'stethoscope', color: '#40cef3' },
   { id: 'cardiology', label: 'Cardiology', icon: 'heart', color: '#ff716c' },
   { id: 'dermatology', label: 'Dermatology', icon: 'sun', color: '#F59E0B' },
   { id: 'neurology', label: 'Neurology', icon: 'brain', color: '#c57eff' },
   { id: 'orthopedics', label: 'Orthopedics', icon: 'bone', color: '#3B82F6' },
   { id: 'pediatrics', label: 'Pediatrics', icon: 'baby', color: '#EC4899' },
   { id: 'gynecology', label: 'Gynecology', icon: 'flower', color: '#DB2777' },
-  { id: 'ophthalmology', label: 'Eye', icon: 'eye', color: '#4CC9F0' },
+  { id: 'ophthalmology', label: 'Ophthalmology', icon: 'eye', color: '#4CC9F0' },
   { id: 'dentistry', label: 'Dentistry', icon: 'smile', color: '#10B981' },
   { id: 'psychiatry', label: 'Psychiatry', icon: 'brain', color: '#7C3AED' },
   { id: 'urology', label: 'Urology', icon: 'droplet', color: '#2563EB' },

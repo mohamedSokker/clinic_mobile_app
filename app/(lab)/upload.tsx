@@ -9,7 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { useAuthStore } from '@/stores/authStore';
-import { getDiagnosesForPatient, attachAnalysisFile } from '@/services/diagnosisService';
+import { getDiagnosesByPatientId, attachAnalysisFile } from '@/services/diagnosisService';
 import { uploadAnalysisFile } from '@/services/storageService';
 import { addNotification } from '@/services/notificationService';
 import { COLORS, FONT_SIZE, SPACING, RADIUS, FONT_FAMILY, GRADIENTS } from '@/lib/theme';
@@ -33,7 +33,7 @@ export default function LabUpload() {
     if (!patientId.trim()) return;
     setSearching(true);
     try {
-      const data = await getDiagnosesForPatient(patientId.trim());
+      const data = await getDiagnosesByPatientId(patientId.trim());
       setDiagnoses(data);
       if (data.length === 0) Toast.show({ type: 'error', text1: 'No diagnoses found for this patient ID' });
     } catch {
@@ -85,14 +85,7 @@ export default function LabUpload() {
   return (
     <View style={styles.container}>
       <LinearGradient colors={GRADIENTS.background as any} style={StyleSheet.absoluteFill} />
-      <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <ArrowLeft size={20} color={COLORS.onSurfaceVariant} />
-            </TouchableOpacity>
-            <Text style={styles.title}>Upload Analysis</Text>
-          </View>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
           {/* Patient search */}
           <GlassCard style={styles.section} variant="strong" radius={RADIUS.xl}>
@@ -165,8 +158,7 @@ export default function LabUpload() {
             </GlassCard>
           )}
         </ScrollView>
-      </SafeAreaView>
-    </View>
+      </View>
   );
 }
 

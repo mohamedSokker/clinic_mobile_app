@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Building2, Star } from "lucide-react-native";
 import { Avatar } from "@/components/ui/Avatar";
 import { COLORS, RADIUS, FONT_FAMILY } from "@/lib/theme";

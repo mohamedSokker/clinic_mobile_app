@@ -5,7 +5,8 @@ import {
   StyleProp,
   StyleSheet,
 } from 'react-native';
-import { COLORS, RADIUS, SHADOWS } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, GRADIENTS } from '@/lib/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -15,46 +16,48 @@ interface GlassCardProps {
   shadow?: boolean;
 }
 
-const VARIANT_STYLES: Record<string, ViewStyle> = {
+const VARIANT_CONFIG: Record<string, { colors: string[], border: string }> = {
   default: {
-    backgroundColor: COLORS.glassFill,
-    borderColor: COLORS.glassBorder,
+    colors: ['rgba(17, 26, 40, 0.4)', 'rgba(28, 38, 55, 0.4)'],
+    border: COLORS.glassBorder,
   },
   strong: {
-    backgroundColor: 'rgba(7, 14, 26, 0.8)',
-    borderColor: 'rgba(111, 117, 133, 0.4)',
+    colors: GRADIENTS.glassStrong,
+    border: 'rgba(111, 117, 133, 0.2)',
   },
   subtle: {
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    colors: ['rgba(255, 255, 255, 0.03)', 'rgba(255, 255, 255, 0.01)'],
+    border: 'rgba(255, 255, 255, 0.05)',
   },
   primary: {
-    backgroundColor: 'rgba(64, 206, 243, 0.08)',
-    borderColor: 'rgba(64, 206, 243, 0.25)',
+    colors: ['rgba(64, 206, 243, 0.08)', 'rgba(64, 206, 243, 0.04)'],
+    border: 'rgba(64, 206, 243, 0.25)',
   },
   secondary: {
-    backgroundColor: 'rgba(197, 126, 255, 0.08)',
-    borderColor: 'rgba(197, 126, 255, 0.25)',
+    colors: ['rgba(197, 126, 255, 0.08)', 'rgba(197, 126, 255, 0.04)'],
+    border: 'rgba(197, 126, 255, 0.25)',
   },
   emergency: {
-    backgroundColor: 'rgba(255, 107, 53, 0.10)',
-    borderColor: 'rgba(255, 107, 53, 0.35)',
+    colors: ['rgba(255, 107, 53, 0.10)', 'rgba(255, 107, 53, 0.05)'],
+    border: 'rgba(255, 107, 53, 0.35)',
   },
 };
 
 export function GlassCard({ children, style, variant = 'default', radius = RADIUS.xl, shadow = true }: GlassCardProps) {
+  const config = VARIANT_CONFIG[variant] || VARIANT_CONFIG.default;
+
   return (
-    <View
+    <LinearGradient
+      colors={config.colors as [string, string, ...string[]]}
       style={[
         styles.card,
-        VARIANT_STYLES[variant],
-        { borderRadius: radius },
+        { borderColor: config.border, borderRadius: radius },
         shadow && SHADOWS.glass,
         style,
       ]}
     >
       {children}
-    </View>
+    </LinearGradient>
   );
 }
 

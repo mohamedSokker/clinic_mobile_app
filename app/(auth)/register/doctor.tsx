@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,10 +10,11 @@ import {
   Platform,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useAuthStore, registerUser } from "@/stores/authStore";
@@ -38,6 +39,8 @@ import * as ImagePicker from "expo-image-picker";
 import { uploadProfilePhoto } from "@/services/storageService";
 import { useStripe } from "@stripe/stripe-react-native";
 import api from "@/lib/api";
+import axios from "axios";
+import { useDebounce } from "use-debounce";
 
 const { width, height } = Dimensions.get("window");
 
@@ -49,6 +52,8 @@ const doctorRegisterSchema = z.object({
   clinicName: z.string().min(1, "Clinic Name is required"),
   specialization: z.string().min(1, "Specialization is required"),
   location: z.string().min(1, "Location is required"),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   visitCost: z
     .string()
     .min(1, "Consultation Fee is required")
@@ -68,6 +73,37 @@ export default function DoctorRegister() {
   const [registeredUser, setRegisteredUser] = useState<any>(null);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
+  // Location Search State
+  const [locationQuery, setLocationQuery] = useState("");
+  const [debouncedLocationQuery] = useDebounce(locationQuery, 800);
+  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    if (debouncedLocationQuery.length > 2) {
+      searchLocations(debouncedLocationQuery);
+    } else {
+      setLocationSuggestions([]);
+    }
+  }, [debouncedLocationQuery]);
+
+  const searchLocations = async (query: string) => {
+    setIsSearchingLocation(true);
+    try {
+      // Using Photon API for better search results
+      const response = await axios.get(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=en`,
+      );
+      setLocationSuggestions(response.data.features || []);
+      setShowSuggestions(true);
+    } catch (error) {
+      console.error("Location search error:", error);
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
+
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -80,7 +116,7 @@ export default function DoctorRegister() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
+      mediaTypes: "images",
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
@@ -111,6 +147,7 @@ export default function DoctorRegister() {
       about: "",
     },
   });
+
   const onSubmit = async (data: DoctorRegisterInputs) => {
     setLoading(true);
     try {
@@ -184,8 +221,6 @@ export default function DoctorRegister() {
           photoURL = await uploadProfilePhoto(user.uid, photoUri);
         } catch (photoErr) {
           console.error("Non-blocking Photo Upload Error:", photoErr);
-          // We don't throw here so the doctor profile still gets created in DB
-          // even if the photo upload fails after they've already paid.
         }
       }
 
@@ -196,6 +231,8 @@ export default function DoctorRegister() {
         clinicName: data.clinicName.trim(),
         specialization: data.specialization,
         location: data.location.trim(),
+        latitude: data.latitude,
+        longitude: data.longitude,
         mobile: data.mobile.trim(),
         visitCost: parseFloat(data.visitCost) || 0,
         photoURL,
@@ -226,7 +263,6 @@ export default function DoctorRegister() {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Simulation of HTML background radial gradients */}
       <View style={styles.bgGlowTop} />
       <View style={styles.bgGlowBottom} />
 
@@ -300,10 +336,13 @@ export default function DoctorRegister() {
                           style={{ width: "100%", height: "100%" }}
                         />
                       ) : (
-                        <MaterialIcons
-                          name="add-a-photo"
-                          size={32}
-                          color={COLORS.onSurfaceVariant}
+                        <Image
+                          source={require("../../../assets/doctor_default.png")}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            opacity: 0.5,
+                          }}
                         />
                       )}
                     </View>
@@ -360,22 +399,92 @@ export default function DoctorRegister() {
                   )}
                 </View>
 
-                <View style={styles.fieldColumn}>
+                {/* Enhanced Location Field with Search */}
+                <View style={[styles.fieldColumn, { zIndex: 100 }]}>
                   <Text style={styles.fieldLabel}>LOCATION</Text>
-                  <Controller
-                    control={control}
-                    name="location"
-                    render={({ field: { onChange, onBlur, value } }) => (
-                      <TextInput
-                        style={styles.input}
-                        placeholder="City, Country"
-                        placeholderTextColor="rgba(255,255,255,0.2)"
-                        onBlur={onBlur}
-                        onChangeText={onChange}
-                        value={value}
+                  <View style={{ position: "relative", justifyContent: "center" }}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g. 123 Clinic St, City"
+                      placeholderTextColor="rgba(255,255,255,0.2)"
+                      value={locationQuery}
+                      onChangeText={(txt) => {
+                        setLocationQuery(txt);
+                        if (txt === "") setShowSuggestions(false);
+                      }}
+                    />
+                    {isSearchingLocation && (
+                      <ActivityIndicator
+                        size="small"
+                        color={COLORS.primary}
+                        style={{ position: "absolute", right: 16 }}
                       />
                     )}
-                  />
+                  </View>
+
+                  {showSuggestions && locationSuggestions.length > 0 && (
+                    <View style={styles.suggestionsDropdownContainer}>
+                      <GlassCard
+                        style={styles.suggestionsDropdown}
+                        variant="strong"
+                      >
+                        <ScrollView
+                          style={{ maxHeight: 250 }}
+                          nestedScrollEnabled={true}
+                          keyboardShouldPersistTaps="always"
+                        >
+                          {locationSuggestions.map((item, idx) => {
+                            const props = item.properties;
+                            const mainName =
+                              props.name || props.street || "Selected Location";
+                            const subName = `${props.city || props.state || ""}, ${props.country || ""}`;
+                            const fullDisplayName = `${mainName}, ${subName}`;
+
+                            return (
+                              <TouchableOpacity
+                                key={idx}
+                                style={styles.suggestionItem}
+                                onPress={() => {
+                                  setValue("location", fullDisplayName);
+                                  setValue(
+                                    "latitude",
+                                    item.geometry.coordinates[1],
+                                  );
+                                  setValue(
+                                    "longitude",
+                                    item.geometry.coordinates[0],
+                                  );
+                                  setLocationQuery(fullDisplayName);
+                                  setShowSuggestions(false);
+                                }}
+                              >
+                                <MaterialIcons
+                                  name="place"
+                                  size={18}
+                                  color={COLORS.primary}
+                                />
+                                <View style={{ flex: 1 }}>
+                                  <Text
+                                    style={styles.suggestionTitle}
+                                    numberOfLines={1}
+                                  >
+                                    {mainName}
+                                  </Text>
+                                  <Text
+                                    style={styles.suggestionSubtitle}
+                                    numberOfLines={1}
+                                  >
+                                    {subName}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      </GlassCard>
+                    </View>
+                  )}
+
                   {errors.location && (
                     <Text style={styles.errorText}>
                       {errors.location.message}
@@ -416,28 +525,23 @@ export default function DoctorRegister() {
                           showsHorizontalScrollIndicator={false}
                           style={{ marginHorizontal: -4 }}
                         >
-                          {[
-                            "General Practice",
-                            "Cardiology",
-                            "Ophthalmology",
-                            "Neurology",
-                            "Dermatology",
-                          ].map((item) => (
+                          {SPECIALIZATIONS.map((item) => (
                             <TouchableOpacity
-                              key={item}
-                              onPress={() => onChange(item)}
+                              key={item.id}
+                              onPress={() => onChange(item.label)}
                               style={[
                                 styles.pickerItem,
-                                value === item && styles.pickerItemActive,
+                                value === item.label && styles.pickerItemActive,
                               ]}
                             >
                               <Text
                                 style={[
                                   styles.pickerItemText,
-                                  value === item && styles.pickerItemTextActive,
+                                  value === item.label &&
+                                    styles.pickerItemTextActive,
                                 ]}
                               >
-                                {item.toUpperCase()}
+                                {item.label.toUpperCase()}
                               </Text>
                             </TouchableOpacity>
                           ))}
@@ -651,7 +755,9 @@ export default function DoctorRegister() {
                       size={20}
                       color={COLORS.onSurfaceVariant}
                     />
-                    <Text style={styles.cardNumber}>•••• •••• •••• {cardLast4}</Text>
+                    <Text style={styles.cardNumber}>
+                      •••• •••• •••• {cardLast4}
+                    </Text>
                   </View>
                   <TouchableOpacity onPress={handleSubmit(onSubmit)}>
                     <Text style={styles.changeLink}>Change</Text>
@@ -798,16 +904,15 @@ const styles = StyleSheet.create({
   sectionIconBg: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: "rgba(64, 206, 243, 0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   sectionTitle: {
     color: COLORS.onSurface,
-    fontSize: 24,
+    fontSize: 20,
     fontFamily: FONT_FAMILY.headline,
-    fontWeight: "700",
   },
   sectionSubtitle: {
     color: COLORS.onSurfaceVariant,
@@ -816,246 +921,279 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 
-  formCard: { padding: 24, gap: 24 },
-  photoSection: {
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-    paddingBottom: 32,
-    marginBottom: 32,
+  formCard: { padding: 24, marginBottom: 32 },
+  photoSection: { marginBottom: 32 },
+  fieldLabel: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 2,
+    marginBottom: 16,
   },
-  photoRow: {
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 24,
-    marginTop: 16,
-  },
+  photoRow: { flexDirection: "row", alignItems: "center", gap: 24 },
   photoPreviewWrapper: { position: "relative" },
   photoPreview: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    borderWidth: 4,
-    borderColor: "rgba(64, 206, 243, 0.2)",
-    backgroundColor: "#1c2637",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255,255,255,0.05)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   photoEditBadge: {
     position: "absolute",
     bottom: 0,
     right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: "#070e1a",
   },
-  photoInfo: { flex: 1, gap: 8 },
+  photoInfo: { flex: 1 },
   photoPrimaryText: {
     color: COLORS.onSurface,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: FONT_FAMILY.headline,
+    marginBottom: 4,
   },
   photoSecondaryText: {
     color: COLORS.onSurfaceVariant,
     fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
     opacity: 0.6,
+    marginBottom: 12,
   },
   photoButton: {
-    backgroundColor: "#1c2637",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 8,
     alignSelf: "flex-start",
-    marginTop: 8,
     borderWidth: 1,
-    borderColor: "rgba(65, 72, 86, 0.3)",
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  photoButtonText: { color: COLORS.onSurface, fontSize: 13, fontWeight: "600" },
+  photoButtonText: {
+    color: COLORS.onSurface,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.headline,
+  },
 
   formContent: { gap: 24 },
-  fieldRow: { flexDirection: "row", gap: 16 },
-  fieldColumn: { flex: 1, gap: 8 },
-  fieldLabel: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.5,
-    opacity: 0.5,
-    marginLeft: 4,
-  },
+  fieldColumn: { gap: 8 },
+  fieldRow: { flexDirection: "column", gap: 16 },
   input: {
-    backgroundColor: "#1c2637",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    padding: 16,
     color: COLORS.onSurface,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderRadius: 4,
     fontSize: 15,
     fontFamily: FONT_FAMILY.body,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
   },
-  inputWithIcon: { position: "relative" },
-  inputPrefix: {
-    position: "absolute",
-    left: 16,
-    top: 16,
-    color: COLORS.primary,
-    fontWeight: "900",
-    zIndex: 1,
+  suggestionsDropdownContainer: {
+    marginTop: 8,
+    zIndex: 2000,
   },
-
-  pickerWrapper: { marginTop: 4 },
+  suggestionsDropdown: {
+    maxHeight: 280,
+    borderRadius: 16,
+    overflow: "hidden",
+    padding: 4,
+    borderWidth: 1,
+    borderColor: "rgba(64, 206, 243, 0.3)",
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  suggestionTitle: {
+    color: COLORS.onSurface,
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.headline,
+    marginBottom: 2,
+  },
+  suggestionSubtitle: {
+    color: COLORS.onSurfaceVariant,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
+    opacity: 0.5,
+  },
+  suggestionText: {
+    color: COLORS.onSurface,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.body,
+    flex: 1,
+  },
+  pickerWrapper: { marginVertical: 8 },
   pickerItem: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 99,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.05)",
     marginRight: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.1)",
   },
   pickerItemActive: {
     backgroundColor: "rgba(64, 206, 243, 0.1)",
-    borderColor: "rgba(64, 206, 243, 0.3)",
+    borderColor: COLORS.primary,
   },
   pickerItemText: {
     color: COLORS.onSurfaceVariant,
-    fontSize: 10,
-    fontWeight: "700",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
   },
   pickerItemTextActive: { color: COLORS.primary },
+  errorText: { color: "#FF5252", fontSize: 12, fontFamily: FONT_FAMILY.body },
 
   standingCard: {
     flexDirection: "column",
     alignItems: "center",
     gap: 20,
-    padding: 32,
-    borderRadius: 12,
-    backgroundColor: "rgba(7, 14, 26, 0.6)",
+    backgroundColor: "rgba(64, 206, 243, 0.05)",
+    padding: 24,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: "rgba(64, 206, 243, 0.3)",
-    borderStyle: "dashed",
-    marginTop: 32,
+    borderColor: "rgba(64, 206, 243, 0.2)",
     marginBottom: 32,
-    textAlign: "center",
   },
   standingIconWrapper: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "rgba(64, 206, 243, 0.05)",
+    backgroundColor: "rgba(64, 206, 243, 0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   standingTitle: {
     color: COLORS.onSurface,
-    fontSize: 20,
+    fontSize: 16,
     fontFamily: FONT_FAMILY.headline,
-    fontWeight: "700",
     marginBottom: 4,
     textAlign: "center",
   },
   standingDesc: {
     color: COLORS.onSurfaceVariant,
-    fontSize: 14,
-    lineHeight: 20,
-    opacity: 0.6,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.body,
+    lineHeight: 18,
+    opacity: 0.7,
     textAlign: "center",
   },
   uploadMiniButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 99,
-    backgroundColor: "#172030",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
   },
   uploadMiniButtonText: {
-    color: COLORS.onSurface,
-    fontSize: 13,
-    fontWeight: "700",
+    color: COLORS.onPrimary,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.headline,
   },
 
   planCard: {
     padding: 32,
-    borderRadius: 12,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    position: "relative",
     overflow: "hidden",
-    gap: 32,
-    backgroundColor: "#172030",
+    marginBottom: 64,
   },
   planGlow: {
     position: "absolute",
     top: -100,
     right: -100,
-    width: 256,
-    height: 256,
-    borderRadius: 128,
-    backgroundColor: COLORS.primary,
-    opacity: 0.15,
+    width: 200,
+    height: 200,
+    backgroundColor: "rgba(64, 206, 243, 0.1)",
+    borderRadius: 100,
   },
   planHeader: {
     color: COLORS.onSurface,
     fontSize: 24,
     fontFamily: FONT_FAMILY.headline,
-    fontWeight: "800",
+    marginBottom: 32,
   },
-
-  featureList: { gap: 24 },
+  featureList: { gap: 20, marginBottom: 40 },
   featureItem: { flexDirection: "row", gap: 16 },
-  featureTitle: { color: COLORS.onSurface, fontSize: 16, fontWeight: "700" },
-  featureDesc: { color: COLORS.onSurfaceVariant, fontSize: 13, opacity: 0.6 },
-
+  featureTitle: {
+    color: COLORS.onSurface,
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.headline,
+    marginBottom: 2,
+  },
+  featureDesc: {
+    color: COLORS.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.body,
+    opacity: 0.6,
+  },
   pricingBox: {
     flexDirection: "row",
-    alignItems: "flex-end",
     justifyContent: "space-between",
-    backgroundColor: "#000000",
-    padding: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    alignItems: "flex-end",
+    paddingTop: 32,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+    marginBottom: 32,
   },
   billingType: {
-    color: COLORS.outline,
+    color: COLORS.primary,
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: FONT_FAMILY.label,
     letterSpacing: 2,
     marginBottom: 4,
   },
-  priceText: { color: COLORS.onSurface, fontSize: 36, fontWeight: "900" },
-  priceSubText: { fontSize: 14, fontWeight: "400", opacity: 0.5 },
+  priceText: {
+    color: COLORS.onSurface,
+    fontSize: 32,
+    fontFamily: FONT_FAMILY.headline,
+    fontWeight: "900",
+  },
+  priceSubText: { fontSize: 16, opacity: 0.5 },
   saveBadge: {
-    backgroundColor: "rgba(64, 206, 243, 0.1)",
+    backgroundColor: "rgba(74, 222, 128, 0.1)",
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 99,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.2)",
   },
   saveBadgeText: {
-    color: COLORS.primary,
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
+    color: "#4ADE80",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.headline,
   },
-
   paymentDetailsLabel: {
     color: COLORS.onSurfaceVariant,
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: FONT_FAMILY.label,
     letterSpacing: 1.5,
     opacity: 0.5,
   },
   creditCardBox: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#1c2637",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.03)",
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
   },
@@ -1063,47 +1201,51 @@ const styles = StyleSheet.create({
   cardNumber: {
     color: COLORS.onSurface,
     fontSize: 14,
-    fontFamily: "monospace",
+    fontFamily: FONT_FAMILY.body,
   },
-  changeLink: { color: COLORS.primary, fontSize: 12, fontWeight: "700" },
-
+  changeLink: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.headline,
+  },
   termsText: {
     color: COLORS.onSurfaceVariant,
-    fontSize: 10,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
     textAlign: "center",
     opacity: 0.5,
-    lineHeight: 16,
-    paddingHorizontal: 24,
+    marginTop: 24,
+    lineHeight: 18,
   },
 
   testimonialContainer: {
-    marginTop: 64,
-    borderRadius: 12,
+    height: 300,
+    borderRadius: 24,
     overflow: "hidden",
-    height: 192,
+    position: "relative",
+    marginBottom: 64,
   },
-  testimonialImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  testimonialContent: { position: "absolute", bottom: 16, left: 16, right: 16 },
+  testimonialImage: { width: "100%", height: "100%" },
+  testimonialContent: {
+    position: "absolute",
+    bottom: 32,
+    left: 32,
+    right: 32,
+  },
   testimonialQuote: {
     color: COLORS.onSurface,
-    fontSize: 14,
-    fontStyle: "italic",
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  testimonialAuthor: { color: COLORS.primary, fontSize: 12, fontWeight: "700" },
-
-  loginWrap: { alignItems: "center", marginTop: 48 },
-  loginText: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 16,
+    fontSize: 20,
     fontFamily: FONT_FAMILY.body,
-    opacity: 0.7,
+    fontStyle: "italic",
+    lineHeight: 30,
+    marginBottom: 16,
   },
-  errorText: {
-    color: COLORS.error,
-    fontSize: 10,
-    fontWeight: "600",
-    marginTop: 4,
+  testimonialAuthor: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.headline,
   },
+
+  loginWrap: { paddingVertical: 24, alignItems: "center" },
+  loginText: { color: COLORS.onSurfaceVariant, fontSize: 15 },
 });

@@ -30,6 +30,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { useAuthStore } from "@/stores/authStore";
 import { getDoctorByUid, updateDoctorSchedule } from "@/services/doctorService";
 import {
+  getPaginatedReservationsForDoctor,
   getReservationsForDoctor,
   insertEmergencyPatient,
 } from "@/services/reservationService";
@@ -60,15 +61,19 @@ export default function DoctorDashboard() {
   });
 
   const {
-    data: reservations = [],
+    data: paginatedData,
     isLoading: loading,
     refetch: refetchReservations,
     isRefetching: refreshing,
   } = useQuery({
-    queryKey: ["reservations", doctor?.id, "today"],
-    queryFn: () => getReservationsForDoctor(doctor!.id, new Date()),
-    enabled: !!doctor,
+    queryKey: ["reservations", "today"],
+    queryFn: () => getPaginatedReservationsForDoctor(new Date(), 1, 100),
+    enabled: !!user,
   });
+
+  const allReservations = paginatedData?.reservations || [];
+  const activeReservations = allReservations.filter((r) => r.status !== "done");
+  const totalReservations = activeReservations.length;
 
   const handleAddEmergency = async () => {
     if (!emergencyName || !doctor) return;
@@ -120,13 +125,15 @@ export default function DoctorDashboard() {
   };
 
   const stats = useMemo(() => {
-    const confirmed = reservations.filter(
+    const confirmed = activeReservations.filter(
       (r) => r.status === "confirmed" || r.status === "waiting",
     ).length;
-    const ongoing = reservations.filter((r) => r.status === "inside").length;
-    const priority = reservations.filter((r) => r.isEmergency).length;
+    const ongoing = activeReservations.filter(
+      (r) => r.status === "inside",
+    ).length;
+    const priority = activeReservations.filter((r) => r.isEmergency).length;
     return { confirmed, ongoing, priority };
-  }, [reservations]);
+  }, [activeReservations]);
 
   const activeBlocks = useMemo(() => {
     if (!doctor?.schedule)
@@ -209,241 +216,249 @@ export default function DoctorDashboard() {
         style={StyleSheet.absoluteFill}
       />
       <BackgroundDecor />
-      <SafeAreaView style={{ flex: 1 }}>
-        {/* TopAppBar */}
-        <View style={styles.appBar}>
-          <View style={styles.appBarLeft}>
-            <Avatar uri={doctor?.photoURL} name={doctor?.doctorName} size={40} />
-            <Text style={styles.brandTitle}>VITREOUS CLINIC</Text>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refetchReservations();
+              refetchDoctor();
+            }}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
+        {/* Hero Section */}
+        <View style={styles.hero}>
+          <View>
+            <Text style={styles.heroLabel}>OPERATIONAL DASHBOARD</Text>
+            <Text style={styles.heroTitle}>Today's Schedule</Text>
           </View>
-          <View style={styles.appBarRight}>
-            <TouchableOpacity style={styles.iconBtn}>
-              <Search size={20} color="rgba(255,255,255,0.4)" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn}>
-              <Bell size={20} color="rgba(255,255,255,0.4)" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => setEmergencyModal(true)}
+            style={styles.emergencyCta}
+            activeOpacity={0.9}
+          >
+            <AlertTriangle size={18} color="#fff" fill="#fff" />
+            <Text style={styles.emergencyCtaText}>EMERGENCY ADD</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                refetchReservations();
-                refetchDoctor();
-              }}
-              tintColor={COLORS.primary}
-            />
-          }
-        >
-          {/* Hero Section */}
-          <View style={styles.hero}>
-            <View>
-              <Text style={styles.heroLabel}>OPERATIONAL DASHBOARD</Text>
-              <Text style={styles.heroTitle}>Today's Schedule</Text>
+        {/* Grid Layout */}
+        <View style={styles.grid}>
+          {/* Main Content */}
+          <View style={styles.mainColumn}>
+            {/* Stats */}
+            <View style={styles.statsGrid}>
+              {[
+                {
+                  label: "CONFIRMED",
+                  value: stats.confirmed,
+                  color: COLORS.primary,
+                },
+                {
+                  label: "ONGOING",
+                  value: stats.ongoing,
+                  color: COLORS.tertiary,
+                },
+                {
+                  label: "PRIORITY",
+                  value: stats.priority,
+                  color: COLORS.error,
+                },
+              ].map((s, i) => (
+                <GlassCard
+                  key={i}
+                  style={styles.statCard}
+                  variant="subtle"
+                  radius={RADIUS.xl}
+                >
+                  <Text style={[styles.statValue, { color: s.color }]}>
+                    {s.value.toString().padStart(2, "0")}
+                  </Text>
+                  <Text style={styles.statLabel}>{s.label}</Text>
+                </GlassCard>
+              ))}
             </View>
-            <TouchableOpacity
-              onPress={() => setEmergencyModal(true)}
-              style={styles.emergencyCta}
-              activeOpacity={0.9}
-            >
-              <AlertTriangle size={18} color="#fff" fill="#fff" />
-              <Text style={styles.emergencyCtaText}>EMERGENCY ADD</Text>
-            </TouchableOpacity>
-          </View>
 
-          {/* Grid Layout */}
-          <View style={styles.grid}>
-            {/* Main Content */}
-            <View style={styles.mainColumn}>
-              {/* Stats */}
-              <View style={styles.statsGrid}>
-                {[
-                  {
-                    label: "CONFIRMED",
-                    value: stats.confirmed,
-                    color: COLORS.primary,
-                  },
-                  {
-                    label: "ONGOING",
-                    value: stats.ongoing,
-                    color: COLORS.tertiary,
-                  },
-                  {
-                    label: "PRIORITY",
-                    value: stats.priority,
-                    color: COLORS.error,
-                  },
-                ].map((s, i) => (
-                  <GlassCard
-                    key={i}
-                    style={styles.statCard}
-                    variant="subtle"
-                    radius={RADIUS.xl}
-                  >
-                    <Text style={[styles.statValue, { color: s.color }]}>
-                      {s.value.toString().padStart(2, "0")}
-                    </Text>
-                    <Text style={styles.statLabel}>{s.label}</Text>
-                  </GlassCard>
-                ))}
-              </View>
+            {/* Pipeline Header */}
+            <View style={styles.pipelineHeader}>
+              <Text style={styles.pipelineTitle}>QUEUE PIPELINE</Text>
+              {totalReservations > 3 && (
+                <TouchableOpacity
+                  onPress={() => router.push("/(doctor)/queue")}
+                  style={styles.viewMoreInline}
+                >
+                  <Text style={styles.viewMoreInlineText}>VIEW FULL QUEUE</Text>
+                  <ChevronRight size={14} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
 
-              {/* Pipeline Header */}
-              <View style={styles.pipelineHeader}>
-                <Text style={styles.pipelineTitle}>QUEUE PIPELINE</Text>
-              </View>
-
-              {/* Reservations List */}
-              <View style={styles.pipelineList}>
-                {reservations.length > 0
-                  ? reservations.map((r) => (
+            {/* Reservations List */}
+            <View style={styles.pipelineList}>
+              {activeReservations.length > 0
+                ? activeReservations
+                    .slice(0, 3)
+                    .map((r) => (
                       <ReservationCard
                         key={r.id}
                         reservation={r}
                         position={r.queuePosition}
                         onPress={() =>
-                          router.push(`/(doctor)/patient/${r.patientId}` as any)
+                          router.push(
+                            `/(doctor)/patient/${r.patientId}?reservationId=${r.id}` as any,
+                          )
                         }
                       />
                     ))
-                  : !loading && (
-                      <GlassCard style={styles.emptyCard} variant="subtle">
-                        <Text style={styles.emptyText}>Pipeline Clear</Text>
-                        <Text style={styles.emptySubtext}>
-                          All scheduled sessions have been concluded.
-                        </Text>
-                      </GlassCard>
-                    )}
-              </View>
-            </View>
+                : !loading && (
+                    <GlassCard style={styles.emptyCard} variant="subtle">
+                      <Text style={styles.emptyText}>Pipeline Clear</Text>
+                      <Text style={styles.emptySubtext}>
+                        All scheduled sessions have been concluded.
+                      </Text>
+                    </GlassCard>
+                  )}
 
-            {/* Sidebar-like section (Clinic Controls) */}
-            <View style={styles.sideColumn}>
-              <GlassCard
-                style={styles.controlsCard}
-                variant="subtle"
-                radius={RADIUS.xl}
-              >
-                <View style={styles.controlsHeader}>
-                  <CalendarIcon size={20} color={COLORS.primary} />
-                  <Text style={styles.controlsTitle}>Clinic Controls</Text>
-                </View>
-
-                <View style={styles.controlGroup}>
-                  <Text style={styles.controlLabel}>OPERATIONAL DAYS</Text>
-                  <View style={styles.daysRow}>
-                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
-                      (d) => {
-                        const active = (doctor?.workingDays || []).includes(d);
-                        return (
-                          <TouchableOpacity
-                            key={d}
-                            onPress={() => handleDayToggle(d)}
-                            style={[
-                              styles.dayCircle,
-                              active && styles.dayCircleActive,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.dayText,
-                                active && styles.dayTextActive,
-                              ]}
-                            >
-                              {d[0]}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      },
-                    )}
+              {totalReservations > 3 && (
+                <TouchableOpacity
+                  style={styles.viewMoreCard}
+                  onPress={() => router.push("/(doctor)/queue")}
+                >
+                  <LinearGradient
+                    colors={["rgba(64,206,243,0.1)", "rgba(64,206,243,0.02)"]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <Text style={styles.viewMoreText}>
+                    +{totalReservations - 3} MORE PATIENTS IN QUEUE
+                  </Text>
+                  <View style={styles.viewMoreCircle}>
+                    <ChevronRight size={20} color={COLORS.primary} />
                   </View>
-                </View>
-
-                <View style={styles.controlGroup}>
-                  <Text style={styles.controlLabel}>ACTIVE BLOCKS</Text>
-                  {activeBlocks.map((b, i) => (
-                    <View
-                      key={i}
-                      style={[
-                        styles.blockToggle,
-                        !b.active && { opacity: 0.5 },
-                      ]}
-                    >
-                      <Text style={styles.blockLabel}>{b.label}</Text>
-                      <View
-                        style={[
-                          styles.toggleTrack,
-                          b.active && styles.toggleTrackActive,
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.toggleThumb,
-                            b.active && styles.toggleThumbActive,
-                          ]}
-                        />
-                      </View>
-                    </View>
-                  ))}
-                </View>
-
-                <View style={styles.controlGroup}>
-                  <Text style={styles.controlLabel}>TIME INTERVALS</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={styles.slotsRow}>
-                      {todaySlots.map((s, i) => (
-                        <View key={i} style={styles.slotBadge}>
-                          <Text style={styles.slotBadgeText}>{s}</Text>
-                        </View>
-                      ))}
-                      {todaySlots.length === 0 && (
-                        <Text style={styles.emptySlotsText}>
-                          No sessions scheduled for today
-                        </Text>
-                      )}
-                    </View>
-                  </ScrollView>
-                </View>
-
-                <View style={styles.utilizationSection}>
-                  <View style={styles.utilizationHeader}>
-                    <Text style={styles.controlLabel}>WEEKLY UTILIZATION</Text>
-                    <Text style={styles.utilizationValue}>84%</Text>
-                  </View>
-                  <View style={styles.progressBar}>
-                    <LinearGradient
-                      colors={[COLORS.primary, COLORS.tertiary]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[styles.progressFill, { width: "84%" }]}
-                    />
-                  </View>
-                </View>
-              </GlassCard>
-
-              {/* Monthly Report Widget */}
-              <TouchableOpacity activeOpacity={0.9} style={styles.reportWidget}>
-                <LinearGradient
-                  colors={
-                    ["rgba(7, 14, 26, 0.6)", "rgba(7, 14, 26, 0.9)"] as any
-                  }
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.reportContent}>
-                  <FileText size={20} color={COLORS.primary} />
-                  <Text style={styles.reportTitle}>Monthly Report</Text>
-                  <Text style={styles.reportSub}>View diagnostic trends</Text>
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
-        </ScrollView>
-      </SafeAreaView>
+
+          {/* Sidebar-like section (Clinic Controls) */}
+          <View style={styles.sideColumn}>
+            <GlassCard
+              style={styles.controlsCard}
+              variant="subtle"
+              radius={RADIUS.xl}
+            >
+              <View style={styles.controlsHeader}>
+                <CalendarIcon size={20} color={COLORS.primary} />
+                <Text style={styles.controlsTitle}>Clinic Controls</Text>
+              </View>
+
+              <View style={styles.controlGroup}>
+                <Text style={styles.controlLabel}>OPERATIONAL DAYS</Text>
+                <View style={styles.daysRow}>
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
+                    (d) => {
+                      const active = (doctor?.workingDays || []).includes(d);
+                      return (
+                        <TouchableOpacity
+                          key={d}
+                          onPress={() => handleDayToggle(d)}
+                          style={[
+                            styles.dayCircle,
+                            active && styles.dayCircleActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.dayText,
+                              active && styles.dayTextActive,
+                            ]}
+                          >
+                            {d[0]}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    },
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.controlGroup}>
+                <Text style={styles.controlLabel}>ACTIVE BLOCKS</Text>
+                {activeBlocks.map((b, i) => (
+                  <View
+                    key={i}
+                    style={[styles.blockToggle, !b.active && { opacity: 0.5 }]}
+                  >
+                    <Text style={styles.blockLabel}>{b.label}</Text>
+                    <View
+                      style={[
+                        styles.toggleTrack,
+                        b.active && styles.toggleTrackActive,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.toggleThumb,
+                          b.active && styles.toggleThumbActive,
+                        ]}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.controlGroup}>
+                <Text style={styles.controlLabel}>TIME INTERVALS</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.slotsRow}>
+                    {todaySlots.map((s, i) => (
+                      <View key={i} style={styles.slotBadge}>
+                        <Text style={styles.slotBadgeText}>{s}</Text>
+                      </View>
+                    ))}
+                    {todaySlots.length === 0 && (
+                      <Text style={styles.emptySlotsText}>
+                        No sessions scheduled for today
+                      </Text>
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+
+              <View style={styles.utilizationSection}>
+                <View style={styles.utilizationHeader}>
+                  <Text style={styles.controlLabel}>WEEKLY UTILIZATION</Text>
+                  <Text style={styles.utilizationValue}>84%</Text>
+                </View>
+                <View style={styles.progressBar}>
+                  <LinearGradient
+                    colors={[COLORS.primary, COLORS.tertiary]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.progressFill, { width: "84%" }]}
+                  />
+                </View>
+              </View>
+            </GlassCard>
+
+            {/* Monthly Report Widget */}
+            <TouchableOpacity activeOpacity={0.9} style={styles.reportWidget}>
+              <LinearGradient
+                colors={["rgba(7, 14, 26, 0.6)", "rgba(7, 14, 26, 0.9)"] as any}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.reportContent}>
+                <FileText size={20} color={COLORS.primary} />
+                <Text style={styles.reportTitle}>Monthly Report</Text>
+                <Text style={styles.reportSub}>View diagnostic trends</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
 
       {/* Emergency modal */}
       <Modal visible={emergencyModal} transparent animationType="fade">
@@ -455,15 +470,32 @@ export default function DoctorDashboard() {
             shadow={true}
           >
             <View style={styles.modalHeader}>
-              <View style={styles.modalIconWrapper}>
-                <AlertTriangle size={24} color={COLORS.primary} />
+              <View
+                style={[
+                  styles.modalIconWrapper,
+                  { backgroundColor: "rgba(255, 82, 82, 0.1)" },
+                ]}
+              >
+                <AlertTriangle size={24} color={COLORS.error} />
               </View>
-              <View>
-                <Text style={styles.modalTitle}>EMERGENCY PROTOCOL</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: COLORS.error }]}>
+                  CRITICAL INSERTION
+                </Text>
                 <Text style={styles.modalSubtitle}>
-                  Patient will be inserted at the top of the queue.
+                  This patient will take the next immediate slot.
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.impactBox}>
+              <View style={styles.impactIcon}>
+                <Bell size={12} color={COLORS.primary} />
+              </View>
+              <Text style={styles.impactText}>
+                The remaining schedule will shift automatically, and affected
+                patients will receive real-time apology alerts.
+              </Text>
             </View>
 
             <View style={styles.modalForm}>
@@ -499,7 +531,7 @@ export default function DoctorDashboard() {
               <GradientButton
                 onPress={handleAddEmergency}
                 label="EXECUTE INSERTION"
-                variant="secondary"
+                variant="emergency"
                 loading={addingEmergency}
                 size="lg"
               />
@@ -599,14 +631,53 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
 
-  pipelineHeader: { marginBottom: -20 },
+  pipelineHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: -20,
+  },
   pipelineTitle: {
     color: "rgba(255,255,255,0.3)",
     fontSize: 9,
     fontFamily: FONT_FAMILY.label,
     letterSpacing: 2,
   },
+  viewMoreInline: { flexDirection: "row", alignItems: "center", gap: 4 },
+  viewMoreInlineText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
+  },
   pipelineList: { gap: 12 },
+  viewMoreCard: {
+    height: 70,
+    borderRadius: RADIUS.xl,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: "rgba(64, 206, 243, 0.2)",
+    marginTop: 8,
+  },
+  viewMoreText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
+    fontWeight: "700",
+  },
+  viewMoreCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(64, 206, 243, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   sideColumn: { gap: 24 },
   controlsCard: {
@@ -784,6 +855,31 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: FONT_FAMILY.label,
     letterSpacing: 1,
+  },
+  impactBox: {
+    flexDirection: "row",
+    backgroundColor: "rgba(64, 206, 243, 0.05)",
+    padding: 16,
+    borderRadius: RADIUS.lg,
+    gap: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(64, 206, 243, 0.1)",
+  },
+  impactIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(64, 206, 243, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  impactText: {
+    flex: 1,
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.body,
+    lineHeight: 16,
   },
   slotsRow: { flexDirection: "row", gap: 8 },
   slotBadge: {

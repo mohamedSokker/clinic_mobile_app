@@ -28,7 +28,7 @@ interface AuthState {
 const flattenProfile = (user: any): AppUser => {
   const { patient, doctor, lab, ...base } = user;
   const profile = patient || doctor || lab || {};
-  return { ...base, ...profile };
+  return { ...base, ...profile, patient, doctor, lab };
 };
 
 export const useAuthStore = create<AuthState>((set, get) => ({

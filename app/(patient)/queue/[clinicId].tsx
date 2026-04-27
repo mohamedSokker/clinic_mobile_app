@@ -33,11 +33,33 @@ export default function QueueScreen() {
   }, [clinicId, user]);
 
   const myPosition = myReservation?.queuePosition ?? 0;
-  const estimatedWait = Math.max(0, (myPosition - 1) * 30);
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  const estTime = new Date(now.getTime() + estimatedWait * 60000)
-    .toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  // Dynamic wait time calculation
+  let estimatedWait = Math.max(0, (myPosition - 1) * 30);
+  let estTime = "";
+
+  if (myReservation?.expectedTime) {
+    const expectedDate = new Date(myReservation.expectedTime);
+    const diffMs = expectedDate.getTime() - now.getTime();
+    estimatedWait = Math.max(0, Math.round(diffMs / 60000));
+    estTime = expectedDate.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } else {
+    estTime = new Date(now.getTime() + estimatedWait * 60000).toLocaleTimeString(
+      "en-US",
+      { hour: "2-digit", minute: "2-digit", hour12: true },
+    );
+  }
+
+  const timeStr = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 
   const handleCancel = () => Alert.alert('Cancel Reservation', 'Are you sure?', [
     { text: 'No', style: 'cancel' },
@@ -53,20 +75,8 @@ export default function QueueScreen() {
     <View style={s.container}>
       <LinearGradient colors={GRADIENTS.background as any} style={StyleSheet.absoluteFill} />
       <BackgroundDecor />
-      <SafeAreaView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-
-          {/* Header */}
-          <View style={s.header}>
-            <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-              <ArrowLeft size={20} color={COLORS.onSurfaceVariant} />
-            </TouchableOpacity>
-            <View style={{ flex: 1, gap: 4 }}>
-              <View style={s.badge}><Radio size={10} color={COLORS.primary} /><Text style={s.badgeText}>Active Session</Text></View>
-              <Text style={s.title}>Queue Status</Text>
-              <Text style={s.deptLabel}>Ophthalmology Dept • Room 402</Text>
-            </View>
-          </View>
 
           <EmergencyBanner visible={emergencyAlert} message="An emergency patient was added. Your position shifted." newPosition={myPosition} onDismiss={() => setEmergencyAlert(false)} />
 
@@ -152,7 +162,7 @@ export default function QueueScreen() {
             <GradientButton onPress={handleCancel} label="Revoke Reservation" variant="ghost" size="md" loading={cancelling} style={{ marginTop: SPACING.sm }} />
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -160,12 +170,6 @@ export default function QueueScreen() {
 const s = StyleSheet.create({
   container: { flex: 1 },
   scroll: { padding: SPACING.xl, paddingBottom: 80, gap: 16 },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, marginBottom: 4 },
-  backBtn: { width: 44, height: 44, borderRadius: RADIUS.xl, backgroundColor: 'rgba(255,255,255,0.03)', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(64,206,243,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start' },
-  badgeText: { color: COLORS.primary, fontSize: 9, fontFamily: FONT_FAMILY.label, letterSpacing: 1 },
-  title: { color: COLORS.onSurface, fontSize: 30, fontFamily: FONT_FAMILY.display, letterSpacing: -1 },
-  deptLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: FONT_FAMILY.body },
   metricsRow: { flexDirection: 'row', gap: 12 },
   metricCard: { flex: 1, padding: 20, backgroundColor: 'rgba(255,255,255,0.02)', alignItems: 'center', gap: 6 },
   metricLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 10, fontFamily: FONT_FAMILY.label, letterSpacing: 1 },

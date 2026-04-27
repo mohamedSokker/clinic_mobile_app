@@ -1,16 +1,14 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
   FlatList,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
   RefreshControl,
   Image,
   Dimensions,
-  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -29,20 +27,13 @@ import { DoctorCard } from "@/components/doctor/DoctorCard";
 import { Avatar } from "@/components/ui/Avatar";
 import { useAuthStore } from "@/stores/authStore";
 import { getAllDoctors } from "@/services/doctorService";
-import {
-  COLORS,
-  SPACING,
-  RADIUS,
-  SPECIALIZATIONS,
-  FONT_FAMILY,
-  GRADIENTS,
-} from "@/lib/theme";
+import { COLORS, RADIUS, FONT_FAMILY, GRADIENTS } from "@/lib/theme";
 import { BackgroundDecor } from "@/components/ui/BackgroundDecor";
 import { useQuery } from "@tanstack/react-query";
 
 const { width: SW } = Dimensions.get("window");
 
-// --- Filter Chips matching HTML ---
+// --- Filter Chips ---
 const FILTERS = [
   { id: "all", label: "All Specialists" },
   { id: "ophthalmology", label: "Ophthalmology" },
@@ -54,7 +45,6 @@ const FILTERS = [
 export default function HomeScreen() {
   const router = useRouter();
   const { profile } = useAuthStore();
-  const [search, setSearch] = useState("");
   const [activeSpec, setActiveSpec] = useState("all");
 
   const {
@@ -74,23 +64,96 @@ export default function HomeScreen() {
         d.specialization.toLowerCase().includes(activeSpec.toLowerCase()),
       );
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (d) =>
-          d.doctorName.toLowerCase().includes(q) ||
-          d.specialization.toLowerCase().includes(q) ||
-          d.clinicName.toLowerCase().includes(q),
-      );
-    }
     return result;
-  }, [search, activeSpec, doctors]);
+  }, [activeSpec, doctors]);
 
-  const firstName = profile?.name?.split(" ")[0] ?? "Explorer";
+  const HomeHeader = useMemo(() => {
+    return (
+      <>
+        {/* ── Hero Search Section ── */}
+        <View style={s.heroSection}>
+          <Text style={s.heroTitle}>
+            Find the <Text style={s.heroTitleItalic}>precision</Text> care
+            {"\n"}you need.
+          </Text>
+          <Text style={s.heroSub}>
+            Advanced diagnostics and specialized medical experts at your
+            fingertips.
+          </Text>
+
+          {/* Search bar — navigates to Explore */}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => router.push("/(patient)/explore")}
+            style={s.searchPill}
+          >
+            <Search size={20} color={COLORS.primary} style={s.searchIcon} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.searchPlaceholder}>Search Doctors or Labs...</Text>
+            </View>
+            <View style={s.searchBtn}>
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.primaryContainer]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={s.searchBtnGradient}
+              >
+                <Text style={s.searchBtnText}>Explore</Text>
+              </LinearGradient>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Quick Filters ── */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.filtersRow}
+          style={s.filtersContainer}
+        >
+          {FILTERS.map((f) => (
+            <TouchableOpacity
+              key={f.id}
+              onPress={() => setActiveSpec(f.id)}
+              style={[s.filterChip, activeSpec === f.id && s.filterChipActive]}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  s.filterChipText,
+                  activeSpec === f.id && s.filterChipTextActive,
+                ]}
+              >
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* ── Recommended Section Header ── */}
+        <View style={s.sectionHeader}>
+          <View>
+            <Text style={s.sectionTitle}>Recommended for You</Text>
+            <Text style={s.sectionSub}>
+              Based on your recent medical history
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={s.viewAllBtn}
+            activeOpacity={0.8}
+            onPress={() => router.push("/(patient)/explore")}
+          >
+            <Text style={s.viewAllText}>View all</Text>
+            <ArrowRight size={14} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }, [activeSpec, router]);
 
   return (
     <View style={s.container}>
-      {/* Ambient blobs — matches HTML's fixed vibrant-blob divs */}
+      {/* Ambient blobs */}
       <View style={s.blobTopRight} />
       <View style={s.blobBottomLeft} />
       <LinearGradient
@@ -99,37 +162,7 @@ export default function HomeScreen() {
       />
       <BackgroundDecor />
 
-      <SafeAreaView style={{ flex: 1 }}>
-        {/* ── TopAppBar ── matching header in HTML */}
-        <View style={s.appBar}>
-          {/* Left: Avatar + Welcome */}
-          <TouchableOpacity
-            onPress={() => router.push("/(patient)/profile")}
-            style={s.appBarLeft}
-            activeOpacity={0.8}
-          >
-            <View style={s.avatarRing}>
-              <Avatar uri={profile?.photoURL} name={profile?.name} size={36} />
-            </View>
-            {/* <View style={s.welcomeCol}>
-              <Text style={s.welcomeLabel}>Welcome back</Text>
-              <Text style={s.welcomeName}>{firstName}</Text>
-            </View> */}
-          </TouchableOpacity>
-
-          {/* Center: Brand */}
-          <Text style={s.brandTitle}>VITREOUS CLINIC</Text>
-
-          {/* Right: Notifications */}
-          <TouchableOpacity
-            onPress={() => router.push("/(patient)/notifications")}
-            style={s.notifBtn}
-            activeOpacity={0.8}
-          >
-            <Bell size={22} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-
+      <View style={{ flex: 1 }}>
         <FlatList
           data={filtered}
           keyExtractor={(d) => d.id}
@@ -142,95 +175,7 @@ export default function HomeScreen() {
               tintColor={COLORS.primary}
             />
           }
-          ListHeaderComponent={() => (
-            <>
-              {/* ── Hero Search Section ── */}
-              <View style={s.heroSection}>
-                <Text style={s.heroTitle}>
-                  Find the <Text style={s.heroTitleItalic}>precision</Text> care
-                  {"\n"}you need.
-                </Text>
-                <Text style={s.heroSub}>
-                  Advanced diagnostics and specialized medical experts at your
-                  fingertips.
-                </Text>
-
-                {/* Search bar — pill shape with inner Search button */}
-                <View style={s.searchPill}>
-                  <Search
-                    size={20}
-                    color={COLORS.primary}
-                    style={s.searchIcon}
-                  />
-                  <TextInput
-                    style={s.searchInput}
-                    placeholder="Search specialization (e.g. Ophthalmology)"
-                    placeholderTextColor="#64748b"
-                    value={search}
-                    onChangeText={setSearch}
-                    selectionColor={COLORS.primary}
-                  />
-                  <TouchableOpacity
-                    style={s.searchBtn}
-                    activeOpacity={0.85}
-                    onPress={() => {}}
-                  >
-                    <LinearGradient
-                      colors={[COLORS.primary, COLORS.primaryContainer]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={s.searchBtnGradient}
-                    >
-                      <Text style={s.searchBtnText}>Search</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* ── Quick Filters ── */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={s.filtersRow}
-                style={s.filtersContainer}
-              >
-                {FILTERS.map((f) => (
-                  <TouchableOpacity
-                    key={f.id}
-                    onPress={() => setActiveSpec(f.id)}
-                    style={[
-                      s.filterChip,
-                      activeSpec === f.id && s.filterChipActive,
-                    ]}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        s.filterChipText,
-                        activeSpec === f.id && s.filterChipTextActive,
-                      ]}
-                    >
-                      {f.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* ── Recommended Section Header ── */}
-              <View style={s.sectionHeader}>
-                <View>
-                  <Text style={s.sectionTitle}>Recommended for You</Text>
-                  <Text style={s.sectionSub}>
-                    Based on your recent medical history
-                  </Text>
-                </View>
-                <TouchableOpacity style={s.viewAllBtn} activeOpacity={0.8}>
-                  <Text style={s.viewAllText}>View all</Text>
-                  <ArrowRight size={14} color={COLORS.primary} />
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
+          ListHeaderComponent={HomeHeader}
           renderItem={({ item }) => (
             <View style={s.cardWrapper}>
               <DoctorCard
@@ -259,7 +204,7 @@ export default function HomeScreen() {
             <View style={s.bentoSection}>
               <Text style={s.bentoTitle}>Clinical Services</Text>
 
-              {/* Large Diagnostics card — matches md:col-span-2 md:row-span-2 */}
+              {/* Large Diagnostics card */}
               <View style={s.bentoLarge}>
                 <Image
                   source={{
@@ -281,15 +226,15 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={s.bentoLargeBtn}
                     activeOpacity={0.85}
+                    onPress={() => router.push("/(patient)/explore")}
                   >
                     <Text style={s.bentoLargeBtnText}>EXPLORE LABS</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* 3-column small tiles row */}
+              {/* Small tiles row */}
               <View style={s.bentoSmallRow}>
-                {/* 24/7 Virtual Care — wider, with secondary accent */}
                 <View
                   style={[s.bentoSmallWide, s.glassCard, s.borderLeftSecondary]}
                 >
@@ -302,10 +247,10 @@ export default function HomeScreen() {
                   <Video size={36} color={COLORS.secondary} />
                 </View>
 
-                {/* Record Access */}
                 <TouchableOpacity
                   style={[s.bentoSmallTile, s.glassCard]}
                   activeOpacity={0.85}
+                  onPress={() => router.push("/(patient)/history")}
                 >
                   <History
                     size={28}
@@ -315,7 +260,6 @@ export default function HomeScreen() {
                   <Text style={s.bentoTileTitle}>Record{"\n"}Access</Text>
                 </TouchableOpacity>
 
-                {/* Prescriptions */}
                 <TouchableOpacity
                   style={[s.bentoSmallTile, s.glassCard]}
                   activeOpacity={0.85}
@@ -331,12 +275,11 @@ export default function HomeScreen() {
             </View>
           )}
         />
-      </SafeAreaView>
+      </View>
 
-      {/* ── FAB: New Appointment ── matching HTML's fixed bottom-24 right-6 */}
       <TouchableOpacity
         style={s.fab}
-        onPress={() => router.push("/(patient)/home")}
+        onPress={() => router.push("/(patient)/explore")}
         activeOpacity={0.85}
       >
         <LinearGradient
@@ -352,11 +295,8 @@ export default function HomeScreen() {
   );
 }
 
-/* ─────────────── Styles ─────────────── */
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-
-  // Ambient blobs
   blobTopRight: {
     position: "absolute",
     top: -80,
@@ -366,7 +306,6 @@ const s = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: COLORS.primary,
     opacity: 0.12,
-    // blur not supported natively, use low opacity only
   },
   blobBottomLeft: {
     position: "absolute",
@@ -378,59 +317,7 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.secondaryContainer,
     opacity: 0.12,
   },
-
-  // ── AppBar ──
-  appBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: "rgba(7,14,26,0.6)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.07)",
-  },
-  appBarLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  avatarRing: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(64,206,243,0.3)",
-  },
-  welcomeCol: { gap: 1 },
-  welcomeLabel: {
-    color: "#94a3b8",
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.label,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  welcomeName: {
-    color: COLORS.onSurface,
-    fontSize: 15,
-    fontFamily: FONT_FAMILY.headline,
-  },
-  brandTitle: {
-    color: COLORS.primary,
-    fontSize: 18,
-    fontFamily: FONT_FAMILY.display,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  notifBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 20,
-  },
-
   listContent: { paddingBottom: 140 },
-
-  // ── Hero ──
   heroSection: {
     paddingHorizontal: 20,
     paddingTop: 28,
@@ -448,7 +335,6 @@ const s = StyleSheet.create({
     color: COLORS.primary,
     fontFamily: FONT_FAMILY.display,
     fontStyle: "italic",
-    // React Native doesn't support italic on custom fonts well, use color distinction
   },
   heroSub: {
     color: "#94a3b8",
@@ -457,12 +343,10 @@ const s = StyleSheet.create({
     lineHeight: 24,
     maxWidth: SW * 0.78,
   },
-
-  // ── Search pill ──
   searchPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surfaceContainerHighest,
+    backgroundColor: "rgba(28, 38, 55, 0.8)",
     borderRadius: RADIUS.full,
     paddingLeft: 20,
     paddingRight: 6,
@@ -473,11 +357,12 @@ const s = StyleSheet.create({
     shadowRadius: 24,
     elevation: 8,
     marginTop: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   searchIcon: { marginRight: 10 },
-  searchInput: {
-    flex: 1,
-    color: COLORS.onSurface,
+  searchPlaceholder: {
+    color: "#64748b",
     fontSize: 15,
     fontFamily: FONT_FAMILY.body,
   },
@@ -492,16 +377,15 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontFamily: FONT_FAMILY.label,
     letterSpacing: 0.3,
+    fontWeight: "700",
   },
-
-  // ── Filters ──
   filtersContainer: { marginTop: 20, marginBottom: 12 },
   filtersRow: { paddingHorizontal: 20, gap: 10, paddingBottom: 4 },
   filterChip: {
     paddingHorizontal: 18,
     paddingVertical: 9,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceContainerHigh,
+    backgroundColor: "rgba(28, 38, 55, 0.6)",
     borderWidth: 1,
     borderColor: "rgba(65,72,86,0.25)",
   },
@@ -512,14 +396,12 @@ const s = StyleSheet.create({
   filterChipText: {
     color: "#cbd5e1",
     fontSize: 13,
-    fontFamily: FONT_FAMILY.bodyMedium,
+    fontFamily: FONT_FAMILY.body,
   },
   filterChipTextActive: {
     color: COLORS.onPrimary,
-    fontFamily: FONT_FAMILY.label,
+    fontWeight: "700",
   },
-
-  // ── Section header ──
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -532,6 +414,7 @@ const s = StyleSheet.create({
     color: COLORS.onSurface,
     fontSize: 22,
     fontFamily: FONT_FAMILY.headline,
+    fontWeight: "700",
   },
   sectionSub: {
     color: "#94a3b8",
@@ -544,12 +427,9 @@ const s = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 13,
     fontFamily: FONT_FAMILY.label,
+    fontWeight: "600",
   },
-
-  // ── Cards ──
   cardWrapper: { paddingHorizontal: 20, marginBottom: 24 },
-
-  // ── Empty ──
   empty: {
     alignItems: "center",
     paddingTop: 80,
@@ -576,8 +456,6 @@ const s = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
-
-  // ── Bento Section ──
   bentoSection: {
     paddingHorizontal: 20,
     marginTop: 24,
@@ -589,9 +467,8 @@ const s = StyleSheet.create({
     fontSize: 22,
     fontFamily: FONT_FAMILY.headline,
     marginBottom: 4,
+    fontWeight: "700",
   },
-
-  // Large card
   bentoLarge: {
     borderRadius: 24,
     overflow: "hidden",
@@ -599,6 +476,7 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(28,38,55,0.6)",
     borderWidth: 1,
     borderColor: "rgba(65,72,86,0.2)",
+    height: 200,
   },
   bentoImage: { ...StyleSheet.absoluteFillObject, opacity: 0.28 },
   bentoLargeContent: { padding: 24, gap: 8 },
@@ -606,6 +484,7 @@ const s = StyleSheet.create({
     color: COLORS.onSurface,
     fontSize: 22,
     fontFamily: FONT_FAMILY.headline,
+    fontWeight: "700",
   },
   bentoLargeSub: {
     color: "#cbd5e1",
@@ -627,9 +506,8 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontFamily: FONT_FAMILY.label,
     letterSpacing: 1.5,
+    fontWeight: "700",
   },
-
-  // Small row
   bentoSmallRow: { flexDirection: "column", gap: 12 },
   glassCard: {
     backgroundColor: "rgba(28,38,55,0.6)",
@@ -642,10 +520,7 @@ const s = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: COLORS.secondary,
   },
-
-  // Virtual Care: wider tile (2/3 of row)
   bentoSmallWide: {
-    flex: 2,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -655,6 +530,7 @@ const s = StyleSheet.create({
     color: COLORS.onSurface,
     fontSize: 15,
     fontFamily: FONT_FAMILY.headline,
+    fontWeight: "700",
   },
   bentoSmallSub: {
     color: "#94a3b8",
@@ -663,13 +539,11 @@ const s = StyleSheet.create({
     lineHeight: 18,
     marginTop: 4,
   },
-
-  // Small square tiles
   bentoSmallTile: {
     flex: 1,
-    // aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 24,
   },
   bentoTileTitle: {
     color: COLORS.onSurface,
@@ -677,9 +551,8 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.headline,
     textAlign: "center",
     lineHeight: 16,
+    fontWeight: "600",
   },
-
-  // ── FAB ──
   fab: {
     position: "absolute",
     bottom: 96,

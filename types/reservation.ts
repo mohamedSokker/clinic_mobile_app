@@ -10,25 +10,64 @@ export type ReservationStatus =
 
 export interface Reservation {
   id: string;
-  doctorId: string;
+  doctorId?: string; // Optional for Lab
+  labId?: string;    // Optional for Doctor
   patientId: string;
   patientName: string;
   patientPhotoURL?: string;
   patientMobile?: string;
-  clinicName: string;
-  doctorName: string;
-  dateTime: Date;
+  clinicName?: string; // Optional for Lab
+  doctorName?: string; // Optional for Lab
+  labName?: string;    // For Lab
+  selectedTest?: string; // For Lab
+  dateTime: string | Date;
   status: ReservationStatus;
   queuePosition: number;
   symptoms?: string;
-  entryTime?: Date;
-  exitTime?: Date;
+  entryTime?: string | Date;
+  exitTime?: string | Date;
   isEmergency: boolean;
   transferredFromId?: string;
   transferredToId?: string;
   cancelReason?: string;
   consultationNote?: string;
-  createdAt: Date;
+  expectedTime?: string | Date;
+  createdAt: string | Date;
+  doctor?: {
+    id: string;
+    doctorName?: string;
+    clinicName?: string;
+    location?: string;
+    photoURL?: string;
+    latitude?: number;
+    longitude?: number;
+    user?: {
+      photoURL?: string;
+    };
+  };
+  lab?: {
+    id: string;
+    labName?: string;
+    location?: string;
+    photoURL?: string;
+    latitude?: number;
+    longitude?: number;
+    user?: {
+      photoURL?: string;
+    };
+  };
+  patient?: {
+    id: string;
+    age?: string;
+    gender?: string;
+    bloodType?: string;
+    user?: {
+      name: string;
+      photoURL?: string;
+      email: string;
+      mobile?: string;
+    };
+  };
 }
 
 export interface TimeSlot {

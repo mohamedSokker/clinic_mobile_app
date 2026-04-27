@@ -1,9 +1,19 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { AlertTriangle, Clock, Play, FileText, MoreVertical } from 'lucide-react-native';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { COLORS, FONT_SIZE, SPACING, RADIUS, FONT_FAMILY } from '@/lib/theme';
-import type { Reservation } from '@/types/reservation';
+import React from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import {
+  AlertTriangle,
+  Clock,
+  Play,
+  FileText,
+  Square,
+  Activity,
+  CheckCircle,
+} from "lucide-react-native";
+import { GlassCard } from "@/components/ui/GlassCard";
+import { COLORS, RADIUS, FONT_FAMILY } from "@/lib/theme";
+import type { Reservation } from "@/types/reservation";
+import { Avatar } from "../ui/Avatar";
 
 interface ReservationCardProps {
   reservation: Reservation;
@@ -12,61 +22,196 @@ interface ReservationCardProps {
   showActions?: boolean;
 }
 
-export function ReservationCard({ reservation, position, onPress, showActions = true }: ReservationCardProps) {
-  const time = reservation.dateTime instanceof Date
-    ? reservation.dateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-    : typeof reservation.dateTime === 'string' 
-      ? new Date(reservation.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-      : '--:--';
+export function ReservationCard({
+  reservation,
+  position,
+  onPress,
+  showActions = true,
+}: ReservationCardProps) {
+  const router = useRouter();
+  const time =
+    reservation.dateTime instanceof Date
+      ? reservation.dateTime.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+      : typeof reservation.dateTime === "string"
+        ? new Date(reservation.dateTime).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : "--:--";
+
+  const date =
+    reservation.dateTime instanceof Date
+      ? reservation.dateTime.toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+        })
+      : typeof reservation.dateTime === "string"
+        ? new Date(reservation.dateTime).toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+          })
+        : "";
 
   const isEmergency = reservation.isEmergency;
-  const isInside = reservation.status === 'inside';
+  const isInside = reservation.status === "inside";
+  const patient = reservation.patient;
+  const patientPhoto = patient?.user?.photoURL || reservation.patientPhotoURL;
+  const patientName = patient?.user?.name || reservation.patientName;
+
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      case "inside":
+        return {
+          label: "ONGOING",
+          color: "#FFD700", // Gold
+          bg: "rgba(255, 215, 0, 0.15)",
+          icon: <Activity size={10} color="#FFD700" />,
+        };
+      case "done":
+        return {
+          label: "COMPLETED",
+          color: "#00E676", // Catchy Green
+          bg: "rgba(0, 230, 118, 0.15)",
+          icon: <CheckCircle size={10} color="#00E676" />,
+        };
+      case "waiting":
+        return {
+          label: "WAITING",
+          color: "#FFAB40", // Catchy Orange
+          bg: "rgba(255, 171, 64, 0.15)",
+          icon: <Clock size={10} color="#FFAB40" />,
+        };
+      case "pending":
+      default:
+        return {
+          label: status === "pending" ? "PENDING" : status.toUpperCase(),
+          color: "#FF5252", // Catchy Red
+          bg: "rgba(255, 82, 82, 0.15)",
+          icon: <Clock size={10} color="#FF5252" />,
+        };
+    }
+  };
+
+  const statusCfg = getStatusConfig(reservation.status);
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.wrapper}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.9}
+      style={styles.wrapper}
+    >
       <GlassCard
         style={[styles.card, isEmergency && styles.cardEmergency]}
         variant="subtle"
         radius={RADIUS.xl}
         shadow={false}
       >
-        {/* Time & Position */}
-        <View style={styles.timeColumn}>
-          <Text style={[styles.timeText, isEmergency && { color: COLORS.error }]}>{time}</Text>
-          <Text style={styles.positionText}>A-{position.toString().padStart(2, '0')}</Text>
-        </View>
-
-        {/* Info */}
-        <View style={styles.content}>
-          <View style={styles.nameRow}>
-            <Text style={styles.patientName}>{reservation.patientName}</Text>
-            {isEmergency ? (
-              <View style={styles.emergencyBadge}>
-                <Text style={styles.emergencyBadgeText}>EMERGENCY</Text>
-              </View>
-            ) : (
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusBadgeText}>{reservation.status === 'confirmed' ? 'FOLLOW-UP' : 'INITIAL'}</Text>
-              </View>
-            )}
+        <View style={styles.mainInfo}>
+          {/* Patient Profile Section */}
+          <View style={styles.profileSection}>
+            <View style={styles.avatarContainer}>
+              <Avatar uri={patientPhoto} name={patientName} size={50} />
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: isInside
+                      ? COLORS.tertiary
+                      : COLORS.primary,
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.timeInfo}>
+              <Text
+                style={[
+                  styles.timeText,
+                  isEmergency && { color: COLORS.error },
+                ]}
+              >
+                {time}
+              </Text>
+              <Text style={styles.dateText}>{date}</Text>
+            </View>
           </View>
-          <Text style={styles.notes} numberOfLines={2}>
-            {reservation.symptoms || "Standard clinical evaluation and diagnostic assessment."}
-          </Text>
+
+          {/* Details Section */}
+          <View style={styles.detailsSection}>
+            <View style={styles.nameHeader}>
+              <Text style={styles.patientName}>{patientName}</Text>
+              <View style={styles.badgeRow}>
+                {isEmergency && (
+                  <View style={[styles.badge, styles.emergencyBadge]}>
+                    <AlertTriangle size={10} color={COLORS.error} />
+                    <Text style={styles.emergencyBadgeText}>EMERGENCY</Text>
+                  </View>
+                )}
+                <View style={[styles.badge, styles.queueBadge]}>
+                  <Text style={styles.queueBadgeText}>
+                    #{position.toString().padStart(2, "0")}
+                  </Text>
+                </View>
+                <View style={[styles.badge, { backgroundColor: statusCfg.bg }]}>
+                  {statusCfg.icon}
+                  <Text
+                    style={[styles.statusBadgeText, { color: statusCfg.color }]}
+                  >
+                    {statusCfg.label}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.metaRow}>
+              <View style={styles.metaItem}>
+                <Text style={styles.metaLabel}>Age:</Text>
+                <Text style={styles.metaValue}>{patient?.age || "24"}y</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.metaItem}>
+                <Text style={styles.metaLabel}>Gender:</Text>
+                <Text style={styles.metaValue}>
+                  {patient?.gender || "Male"}
+                </Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.metaItem}>
+                <Text style={styles.metaLabel}>Type:</Text>
+                <Text style={styles.metaValue}>
+                  {reservation.status === "confirmed" ? "Follow-up" : "Initial"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.symptomsRow}>
+              <FileText size={12} color="rgba(255,255,255,0.3)" />
+              <Text style={styles.symptomsText} numberOfLines={1}>
+                {reservation.symptoms ||
+                  "Regular checkup and clinical evaluation."}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {/* Actions */}
+        {/* Action Column */}
         {showActions && (
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.actionBtn}>
-              <FileText size={18} color={COLORS.primary} />
-            </TouchableOpacity>
-            {reservation.status !== 'done' && (
-              <TouchableOpacity style={[styles.actionBtn, styles.primaryActionBtn]}>
+            {reservation.status !== "done" && (
+              <TouchableOpacity
+                style={[styles.primaryAction, isInside && styles.ongoingAction]}
+                onPress={() =>
+                  router.push(`/(doctor)/scan/${reservation.id}` as any)
+                }
+              >
                 {isInside ? (
-                  <MoreVertical size={18} color="rgba(255,255,255,0.4)" />
+                  <Square size={20} color="#fff" fill="#fff" />
                 ) : (
-                  <Play size={18} color={COLORS.onPrimary} fill={COLORS.onPrimary} />
+                  <Play size={20} color="#fff" fill="#fff" />
                 )}
               </TouchableOpacity>
             )}
@@ -78,34 +223,146 @@ export function ReservationCard({ reservation, position, onPress, showActions = 
 }
 
 const styles = StyleSheet.create({
-  wrapper: { marginVertical: 4 },
+  wrapper: { marginVertical: 6 },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    gap: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
     borderLeftWidth: 4,
-    borderLeftColor: 'rgba(64, 206, 243, 0.3)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderLeftColor: COLORS.primary,
+    backgroundColor: "rgba(255,255,255,0.02)",
   },
   cardEmergency: {
     borderLeftColor: COLORS.error,
-    backgroundColor: 'rgba(255, 113, 108, 0.05)',
+    backgroundColor: "rgba(255, 113, 108, 0.05)",
   },
-  timeColumn: { alignItems: 'center', minWidth: 60, gap: 2 },
-  timeText: { color: COLORS.onSurface, fontSize: 18, fontFamily: FONT_FAMILY.display },
-  positionText: { color: 'rgba(255,255,255,0.3)', fontSize: 10, fontFamily: FONT_FAMILY.label, letterSpacing: 1 },
-  
-  content: { flex: 1, gap: 4 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  patientName: { color: COLORS.onSurface, fontSize: 18, fontFamily: FONT_FAMILY.display, letterSpacing: -0.5 },
-  emergencyBadge: { backgroundColor: 'rgba(255, 113, 108, 0.1)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-  emergencyBadgeText: { color: COLORS.error, fontSize: 8, fontFamily: FONT_FAMILY.label, letterSpacing: 0.5 },
-  statusBadge: { backgroundColor: 'rgba(64, 206, 243, 0.1)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-  statusBadgeText: { color: COLORS.primary, fontSize: 8, fontFamily: FONT_FAMILY.label, letterSpacing: 0.5 },
-  notes: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontFamily: FONT_FAMILY.body, lineHeight: 18 },
+  mainInfo: { flex: 1, flexDirection: "row", alignItems: "center", gap: 16 },
 
-  actions: { flexDirection: 'row', gap: 8 },
-  actionBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.03)', alignItems: 'center', justifyContent: 'center' },
-  primaryActionBtn: { backgroundColor: COLORS.primary },
+  profileSection: { alignItems: "center", minWidth: 70, gap: 8 },
+  avatarContainer: { position: "relative" },
+  statusDot: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: "#070e1a",
+  },
+  timeInfo: { alignItems: "center" },
+  timeText: {
+    color: COLORS.onSurface,
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.display,
+    fontWeight: "700",
+  },
+  dateText: {
+    color: "rgba(255,255,255,0.3)",
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.label,
+  },
+
+  detailsSection: { flex: 1, gap: 6, overflow: "hidden" },
+  nameHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  patientName: {
+    color: COLORS.onSurface,
+    fontSize: 17,
+    fontFamily: FONT_FAMILY.display,
+    fontWeight: "700",
+  },
+  badgeRow: {
+    flexDirection: "row",
+    gap: 4,
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  emergencyBadge: { backgroundColor: "rgba(255, 113, 108, 0.15)" },
+  emergencyBadgeText: {
+    color: COLORS.error,
+    fontSize: 8,
+    fontWeight: "800",
+    fontFamily: FONT_FAMILY.label,
+  },
+  queueBadge: { backgroundColor: "rgba(255,255,255,0.05)" },
+  queueBadgeText: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  statusBadgeText: {
+    fontSize: 8,
+    fontWeight: "800",
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 0.5,
+  },
+
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  metaLabel: {
+    color: "rgba(255,255,255,0.25)",
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.body,
+  },
+  metaValue: {
+    color: COLORS.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bodyMedium,
+    fontWeight: "600",
+  },
+  divider: { width: 1, height: 10, backgroundColor: "rgba(255,255,255,0.1)" },
+
+  symptomsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    padding: 8,
+    borderRadius: 10,
+  },
+  symptomsText: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.body,
+    fontStyle: "italic",
+    flex: 1,
+  },
+
+  actions: { marginLeft: 8, flexShrink: 0 },
+  primaryAction: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  ongoingAction: {
+    backgroundColor: COLORS.tertiary,
+    shadowColor: COLORS.tertiary,
+  },
 });

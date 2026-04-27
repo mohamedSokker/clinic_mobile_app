@@ -67,38 +67,30 @@ export default function ScheduleScreen() {
         colors={GRADIENTS.background as any}
         style={StyleSheet.absoluteFill}
       />
-      <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <Text style={styles.title}>Working Schedule</Text>
-            <Text style={styles.subtitle}>
-              Set your availability for patients
-            </Text>
-          </View>
-          {!isLoading && doctor && (
-            <SchedulePicker
-              schedule={schedule}
-              workingDays={workingDays}
-              slotDuration={slotDuration}
-              onScheduleChange={setSchedule}
-              onWorkingDaysChange={setWorkingDays}
-              onSlotDurationChange={setSlotDuration}
-            />
-          )}
-          <GradientButton
-            onPress={handleSave}
-            label="Save Schedule"
-            loading={saving}
-            size="lg"
-            variant="secondary"
-            icon={<Save size={18} color="#fff" />}
-            style={{ marginTop: SPACING.xl }}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {!isLoading && doctor && (
+          <SchedulePicker
+            schedule={schedule}
+            workingDays={workingDays}
+            slotDuration={slotDuration}
+            onScheduleChange={setSchedule}
+            onWorkingDaysChange={setWorkingDays}
+            onSlotDurationChange={setSlotDuration}
           />
-        </ScrollView>
-      </SafeAreaView>
+        )}
+        <GradientButton
+          onPress={handleSave}
+          label="Save Schedule"
+          loading={saving}
+          size="lg"
+          variant="secondary"
+          icon={<Save size={18} color="#fff" />}
+          style={{ marginTop: SPACING.xl }}
+        />
+      </ScrollView>
     </View>
   );
 }

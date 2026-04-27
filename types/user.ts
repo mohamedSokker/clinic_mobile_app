@@ -1,13 +1,17 @@
 export type UserRole = 'doctor' | 'patient' | 'lab';
 
 export interface BaseUser {
-  uid: string;
+  id: string; // The database UUID
+  uid: string; // The Firebase UID
   role: UserRole;
   name: string;
   email: string;
   mobile: string;
   photoURL?: string;
   fcmToken?: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
   createdAt: Date;
 }
 
@@ -23,6 +27,13 @@ export interface PatientUser extends BaseUser {
   // Demographics
   age?: string;
   gender?: string;
+  weight?: number;
+  height?: number;
+  allergies?: string[];
+  chronicConditions?: string[];
+  location?: string;
+  latitude?: number;
+  longitude?: number;
   // Nested patient record fields
   patient?: {
     bloodType?: string;
@@ -33,17 +44,70 @@ export interface PatientUser extends BaseUser {
     spo2?: string;
     age?: string;
     gender?: string;
+    weight?: number;
+    height?: number;
+    allergies?: string[];
+    chronicConditions?: string[];
+    location?: string;
+    latitude?: number;
+    longitude?: number;
+    analysisFiles?: any[];
   };
 }
 
 export interface DoctorUser extends BaseUser {
   role: 'doctor';
-  clinicId: string;
+  clinicName?: string;
+  doctorName?: string;
+  specialization?: string;
+  visitCost?: number;
+  about?: string;
+  badgeTitle?: string;
+  yearsExperience?: number;
+  patientsCount?: number;
+  successRate?: number;
+  rating?: number;
+  latitude?: number;
+  longitude?: number;
+  doctor?: {
+    id: string;
+    clinicName?: string;
+    doctorName?: string;
+    location?: string;
+    specialization?: string;
+    visitCost: number;
+    videoConsultCost?: number;
+    inPersonCost?: number;
+    about?: string;
+    badgeTitle?: string;
+    yearsExperience?: number;
+    patientsCount?: number;
+    successRate?: number;
+    specialties?: string[];
+    rating: number;
+    reviewCount: number;
+    latitude?: number;
+    longitude?: number;
+  };
 }
 
 export interface LabUser extends BaseUser {
   role: 'lab';
-  labId: string;
+  id: string; // The Lab ID (different from User UID)
+  labName?: string;
+  location?: string;
+  type?: string;
+  licenseNumber?: string;
+  analysisTypes?: { name: string; cost: number }[];
+  partnershipLevel?: string;
+  isAvailable?: boolean;
+  accuracy?: number;
+  avgTurnaroundTime?: number;
+  description?: string;
+  certifications?: Record<string, string>;
+  latitude?: number;
+  longitude?: number;
+  lab?: any; // To allow access if not fully flattened or for nested access
 }
 
 export type AppUser = PatientUser | DoctorUser | LabUser;

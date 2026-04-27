@@ -11,6 +11,7 @@ import { COLORS } from "@/lib/theme";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StripeProvider } from "@stripe/stripe-react-native";
+import { initNotifications } from "@/services/notificationService";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -21,8 +22,8 @@ export default function RootLayout() {
     useAuthStore();
   const [ready, setReady] = useState(false);
 
-  console.log("user", user);
-  console.log("role", role);
+  // console.log("user", user);
+  // console.log("role", role);
 
   const segments = useSegments();
   const router = useRouter();
@@ -34,6 +35,22 @@ export default function RootLayout() {
   useEffect(() => {
     if (!ready || loading) return;
 
+    // Initialize notifications if user is logged in
+    let unsubNotifications: (() => void) | undefined;
+    if (user) {
+      initNotifications().then(unsub => {
+        unsubNotifications = unsub;
+      });
+    }
+
+    return () => {
+      if (unsubNotifications) unsubNotifications();
+    };
+  }, [user, ready, loading]);
+
+  useEffect(() => {
+    if (!ready || loading) return;
+    
     const inAuthGroup = segments[0] === "(auth)";
 
     if (!user && !inAuthGroup) {
@@ -58,7 +75,10 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <StripeProvider
-        publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || "pk_test_mock_vitreous_51PqWfE"}
+        publishableKey={
+          process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
+          "pk_test_mock_vitreous_51PqWfE"
+        }
         merchantIdentifier="merchant.com.vitreous"
       >
         <GestureHandlerRootView style={{ flex: 1 }}>

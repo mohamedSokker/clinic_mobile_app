@@ -10,6 +10,7 @@ import {
   Platform,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -34,6 +35,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { uploadProfilePhoto } from "@/services/storageService";
 import api from "@/lib/api";
+import axios from "axios";
+import { useDebounce } from "use-debounce";
 
 const { width, height } = Dimensions.get("window");
 
@@ -49,6 +52,14 @@ const patientRegisterSchema = z
     confirmPassword: z
       .string()
       .min(6, "Confirmation must be at least 6 characters"),
+    age: z.string().optional(),
+    gender: z.string().optional(),
+    bloodType: z.string().optional(),
+    location: z.string().min(1, "Location is required"),
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+    weight: z.string().optional(),
+    height: z.string().optional(),
     terms: z.boolean().refine((val) => val === true, {
       message: "You must agree to the terms",
     }),
@@ -65,6 +76,36 @@ export default function PatientRegister() {
   const { login } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+  // Location Search State
+  const [locationQuery, setLocationQuery] = useState("");
+  const [debouncedLocationQuery] = useDebounce(locationQuery, 800);
+  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  React.useEffect(() => {
+    if (debouncedLocationQuery.length > 2) {
+      searchLocations(debouncedLocationQuery);
+    } else {
+      setLocationSuggestions([]);
+    }
+  }, [debouncedLocationQuery]);
+
+  const searchLocations = async (query: string) => {
+    setIsSearchingLocation(true);
+    try {
+      const response = await axios.get(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=en`,
+      );
+      setLocationSuggestions(response.data.features || []);
+      setShowSuggestions(true);
+    } catch (error) {
+      console.error("Location search error:", error);
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -92,6 +133,7 @@ export default function PatientRegister() {
   const {
     control,
     handleSubmit,
+    setValue,
     formState: { errors, isValid },
   } = useForm<PatientRegisterInputs>({
     resolver: zodResolver(patientRegisterSchema),
@@ -102,6 +144,12 @@ export default function PatientRegister() {
       mobile: "",
       password: "",
       confirmPassword: "",
+      age: "",
+      gender: "",
+      bloodType: "",
+      weight: "",
+      height: "",
+      location: "",
       terms: false as any,
     },
   });
@@ -118,6 +166,14 @@ export default function PatientRegister() {
           name: data.name.trim(),
           email: data.email.trim().toLowerCase(),
           mobile: data.mobile.trim(),
+          age: data.age,
+          gender: data.gender,
+          bloodType: data.bloodType,
+          location: data.location,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          weight: data.weight ? parseFloat(data.weight) : undefined,
+          height: data.height ? parseFloat(data.height) : undefined,
         } as any,
       );
 
@@ -281,6 +337,228 @@ export default function PatientRegister() {
                   {errors.name && (
                     <Text style={styles.errorText}>{errors.name.message}</Text>
                   )}
+                </View>
+
+                {/* Enhanced Location Field with Search */}
+                <View style={[styles.fieldColumn, { zIndex: 100 }]}>
+                  <Text style={styles.fieldLabel}>LOCATION</Text>
+                  <Controller
+                    control={control}
+                    name="location"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <View style={styles.inputWrapper}>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="e.g. 123 Health St, NY"
+                          placeholderTextColor="rgba(255,255,255,0.2)"
+                          value={locationQuery}
+                          onBlur={onBlur}
+                          onChangeText={(txt) => {
+                            setLocationQuery(txt);
+                            onChange(txt);
+                            if (txt === "") setShowSuggestions(false);
+                          }}
+                        />
+                        {isSearchingLocation ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={COLORS.primary}
+                            style={{ marginRight: 8 }}
+                          />
+                        ) : (
+                          <MaterialIcons
+                            name="location-on"
+                            size={20}
+                            color="rgba(255,255,255,0.2)"
+                          />
+                        )}
+                      </View>
+                    )}
+                  />
+
+                  {showSuggestions && locationSuggestions.length > 0 && (
+                    <View style={styles.suggestionsDropdownContainer}>
+                      <GlassCard
+                        style={styles.suggestionsDropdown}
+                        variant="strong"
+                      >
+                        <ScrollView
+                          style={{ maxHeight: 250 }}
+                          nestedScrollEnabled={true}
+                          keyboardShouldPersistTaps="always"
+                        >
+                          {locationSuggestions.map((item, idx) => {
+                            const props = item.properties;
+                            const mainName =
+                              props.name || props.street || "Selected Location";
+                            const subName = `${props.city || props.state || ""}, ${props.country || ""}`;
+                            const fullDisplayName = `${mainName}, ${subName}`;
+
+                            return (
+                              <TouchableOpacity
+                                key={idx}
+                                style={styles.suggestionItem}
+                                onPress={() => {
+                                  setValue("location", fullDisplayName);
+                                  setValue(
+                                    "latitude",
+                                    item.geometry.coordinates[1],
+                                  );
+                                  setValue(
+                                    "longitude",
+                                    item.geometry.coordinates[0],
+                                  );
+                                  setLocationQuery(fullDisplayName);
+                                  setShowSuggestions(false);
+                                }}
+                              >
+                                <MaterialIcons
+                                  name="place"
+                                  size={18}
+                                  color={COLORS.primary}
+                                />
+                                <View style={{ flex: 1 }}>
+                                  <Text
+                                    style={styles.suggestionTitle}
+                                    numberOfLines={1}
+                                  >
+                                    {mainName}
+                                  </Text>
+                                  <Text
+                                    style={styles.suggestionSubtitle}
+                                    numberOfLines={1}
+                                  >
+                                    {subName}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      </GlassCard>
+                    </View>
+                  )}
+
+                  {errors.location && (
+                    <Text style={styles.errorText}>
+                      {errors.location.message}
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.fieldRow}>
+                  <View style={[styles.fieldColumn, { flex: 1 }]}>
+                    <Text style={styles.fieldLabel}>AGE</Text>
+                    <Controller
+                      control={control}
+                      name="age"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <View style={styles.inputWrapper}>
+                          <TextInput
+                            style={styles.input}
+                            placeholder="28"
+                            placeholderTextColor="rgba(255,255,255,0.2)"
+                            onBlur={onBlur}
+                            onChangeText={onChange}
+                            value={value}
+                            keyboardType="numeric"
+                          />
+                        </View>
+                      )}
+                    />
+                  </View>
+                  <View style={[styles.fieldColumn, { flex: 1 }]}>
+                    <Text style={styles.fieldLabel}>GENDER</Text>
+                    <Controller
+                      control={control}
+                      name="gender"
+                      render={({ field: { onChange, value } }) => (
+                        <View style={styles.genderRow}>
+                          {["Male", "Female"].map((g) => (
+                            <TouchableOpacity
+                              key={g}
+                              style={[
+                                styles.genderBtn,
+                                value === g && styles.genderBtnActive,
+                              ]}
+                              onPress={() => onChange(g)}
+                            >
+                              <Text
+                                style={[
+                                  styles.genderBtnText,
+                                  value === g && styles.genderBtnTextActive,
+                                ]}
+                              >
+                                {g}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.fieldRow}>
+                  <View style={[styles.fieldColumn, { flex: 1 }]}>
+                    <Text style={styles.fieldLabel}>WEIGHT (KG)</Text>
+                    <Controller
+                      control={control}
+                      name="weight"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <View style={styles.inputWrapper}>
+                          <TextInput
+                            style={styles.input}
+                            placeholder="70"
+                            placeholderTextColor="rgba(255,255,255,0.2)"
+                            onBlur={onBlur}
+                            onChangeText={onChange}
+                            value={value}
+                            keyboardType="numeric"
+                          />
+                        </View>
+                      )}
+                    />
+                  </View>
+                  <View style={[styles.fieldColumn, { flex: 1 }]}>
+                    <Text style={styles.fieldLabel}>HEIGHT (CM)</Text>
+                    <Controller
+                      control={control}
+                      name="height"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <View style={styles.inputWrapper}>
+                          <TextInput
+                            style={styles.input}
+                            placeholder="175"
+                            placeholderTextColor="rgba(255,255,255,0.2)"
+                            onBlur={onBlur}
+                            onChangeText={onChange}
+                            value={value}
+                            keyboardType="numeric"
+                          />
+                        </View>
+                      )}
+                    />
+                  </View>
+                  <View style={[styles.fieldColumn, { flex: 1 }]}>
+                    <Text style={styles.fieldLabel}>BLOOD TYPE</Text>
+                    <Controller
+                      control={control}
+                      name="bloodType"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <View style={styles.inputWrapper}>
+                          <TextInput
+                            style={styles.input}
+                            placeholder="O+"
+                            placeholderTextColor="rgba(255,255,255,0.2)"
+                            onBlur={onBlur}
+                            onChangeText={onChange}
+                            value={value}
+                          />
+                        </View>
+                      )}
+                    />
+                  </View>
                 </View>
 
                 <View style={styles.fieldRow}>
@@ -646,6 +924,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: FONT_FAMILY.body,
   },
+  suggestionsDropdownContainer: {
+    marginTop: 8,
+    zIndex: 2000,
+  },
+  suggestionsDropdown: {
+    maxHeight: 280,
+    borderRadius: 16,
+    overflow: "hidden",
+    padding: 4,
+    borderWidth: 1,
+    borderColor: "rgba(64, 206, 243, 0.3)",
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  suggestionTitle: {
+    color: COLORS.onSurface,
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.headline,
+    marginBottom: 2,
+  },
+  suggestionSubtitle: {
+    color: COLORS.onSurfaceVariant,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
+    opacity: 0.5,
+  },
   errorText: {
     color: COLORS.error,
     fontSize: 11,
@@ -681,5 +991,31 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.label,
     letterSpacing: 1.5,
     textAlign: "center",
+  },
+  genderRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  genderBtn: {
+    flex: 1,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  genderBtnActive: {
+    backgroundColor: "rgba(64, 206, 243, 0.1)",
+    borderColor: COLORS.primary,
+  },
+  genderBtnText: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  genderBtnTextActive: {
+    color: COLORS.primary,
   },
 });

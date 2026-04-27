@@ -84,6 +84,24 @@ export default function DoctorDetail() {
     enabled: !!doctor && !!selectedDate,
   });
 
+  const { data: weekAvailability } = useQuery({
+    queryKey: ["weekAvailability", doctor?.id, weekStart.toDateString()],
+    queryFn: async () => {
+      const days = buildWeekDays(weekStart);
+      return Promise.all(
+        days.map((d) =>
+          getAvailableTimeSlots(
+            doctor!.id,
+            d.date,
+            doctor!.slotDurationMinutes,
+            doctor!.schedule,
+          ),
+        ),
+      );
+    },
+    enabled: !!doctor,
+  });
+
   const handleBook = async () => {
     if (!selectedDate || !selectedTime || !doctor || !user || !profile) {
       Toast.show({ type: "error", text1: "Please select a date and time" });
@@ -151,26 +169,7 @@ export default function DoctorDetail() {
       />
       <BackgroundDecor />
 
-      <SafeAreaView style={{ flex: 1 }}>
-        {/* ── TopAppBar ── */}
-        <View style={s.appBar}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={s.appBarBtn}
-            activeOpacity={0.8}
-          >
-            <ArrowLeft size={22} color={COLORS.onSurface} />
-          </TouchableOpacity>
-          <Text style={s.appBarBrand}>VITREOUS CLINIC</Text>
-          {/* <View style={{ width: 44 }} /> */}
-          <Avatar
-            uri={doctor.photoURL}
-            name={doctor.doctorName}
-            size={40}
-            borderColor="rgba(255,255,255,0.1)"
-          />
-        </View>
-
+      <View style={{ flex: 1 }}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.scroll}
@@ -316,26 +315,37 @@ export default function DoctorDetail() {
                 );
                 const isSelected =
                   selectedDate?.toDateString() === d.date.toDateString();
+
+                // Check if fully booked or all slots passed
+                const daySlots = weekAvailability ? weekAvailability[i] : [];
+                const hasFutureSlots = daySlots.length > 0;
+                const isFullyBooked =
+                  hasFutureSlots && daySlots.every((s) => s.taken);
+
+                const isUnavailable =
+                  !isWorkDay || !hasFutureSlots || isFullyBooked;
+
                 return (
                   <TouchableOpacity
                     key={i}
                     onPress={() => {
-                      if (!isWorkDay) return;
+                      if (isUnavailable) return;
                       setSelectedDate(d.date);
                       setSelectedTime(null);
                     }}
                     style={[
                       s.dateCell,
                       isSelected && s.dateCellActive,
-                      !isWorkDay && s.dateCellDisabled,
+                      isUnavailable && s.dateCellDisabled,
+                      isFullyBooked && s.dateCellTaken,
                     ]}
-                    activeOpacity={isWorkDay ? 0.8 : 1}
+                    activeOpacity={!isUnavailable ? 0.8 : 1}
                   >
                     <Text
                       style={[
                         s.dateDayLabel,
                         isSelected && s.dateDayLabelActive,
-                        !isWorkDay && { opacity: 0.3 },
+                        isUnavailable && { opacity: 0.3 },
                       ]}
                     >
                       {d.dayLabel.toUpperCase()}
@@ -344,11 +354,15 @@ export default function DoctorDetail() {
                       style={[
                         s.dateDayNum,
                         isSelected && s.dateDayNumActive,
-                        !isWorkDay && { opacity: 0.3 },
+                        isUnavailable && { opacity: 0.3 },
                       ]}
                     >
                       {d.dayNum}
                     </Text>
+                    {isFullyBooked && <Text style={s.takenDayLabel}>full</Text>}
+                    {!isFullyBooked && !hasFutureSlots && isWorkDay && (
+                      <Text style={s.takenDayLabel}>closed</Text>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -379,7 +393,9 @@ export default function DoctorDetail() {
                 </Text>
               ) : (
                 <View style={s.slotsGrid}>
-                  {availableSlots.map((slot, i) => {
+                  {availableSlots.map((slotObj, i) => {
+                    const slot = slotObj.time;
+                    const isTaken = slotObj.taken;
                     const active = selectedTime === slot;
                     // Format 24h → 12h AM/PM
                     const [hh, mm] = slot.split(":").map(Number);
@@ -389,13 +405,25 @@ export default function DoctorDetail() {
                     return (
                       <TouchableOpacity
                         key={i}
-                        onPress={() => setSelectedTime(slot)}
-                        style={[s.slotCell, active && s.slotCellActive]}
-                        activeOpacity={0.8}
+                        onPress={() => !isTaken && setSelectedTime(slot)}
+                        style={[
+                          s.slotCell,
+                          active && s.slotCellActive,
+                          isTaken && s.slotCellTaken,
+                        ]}
+                        activeOpacity={isTaken ? 1 : 0.8}
+                        disabled={isTaken}
                       >
-                        <Text style={[s.slotText, active && s.slotTextActive]}>
+                        <Text
+                          style={[
+                            s.slotText,
+                            active && s.slotTextActive,
+                            isTaken && s.slotTextTaken,
+                          ]}
+                        >
                           {label}
                         </Text>
+                        {/* {isTaken && <Text style={s.takenText}>taken</Text>} */}
                       </TouchableOpacity>
                     );
                   })}
@@ -515,7 +543,7 @@ export default function DoctorDetail() {
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -524,40 +552,6 @@ export default function DoctorDetail() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scroll: { paddingBottom: 48 },
-
-  // AppBar
-  appBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "rgba(7,14,26,0.6)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.07)",
-  },
-  appBarBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  appBarBrand: {
-    color: COLORS.primary,
-    fontSize: 18,
-    fontFamily: FONT_FAMILY.display,
-    letterSpacing: 1.5,
-  },
-  avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
 
   // Hero
   heroWrap: {
@@ -633,7 +627,12 @@ const s = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
-  statValue: { color: "#fff", fontSize: 22, fontFamily: FONT_FAMILY.display },
+  statValue: {
+    color: "#fff",
+    fontSize: 22,
+    fontFamily: FONT_FAMILY.display,
+    textAlign: "center",
+  },
 
   // Bio
   section: { paddingHorizontal: 20, marginBottom: 24, gap: 12 },
@@ -846,5 +845,33 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.display,
     letterSpacing: 1.5,
     textTransform: "uppercase",
+  },
+  dateCellTaken: {
+    backgroundColor: "rgba(215, 56, 59, 0.05)",
+    borderColor: "rgba(215, 56, 59, 0.1)",
+  },
+  takenDayLabel: {
+    fontSize: 8,
+    color: COLORS.error,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    position: "absolute",
+    bottom: 4,
+  },
+  slotCellTaken: {
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderColor: "rgba(255,255,255,0.05)",
+    opacity: 0.5,
+  },
+  slotTextTaken: {
+    color: "rgba(255,255,255,0.3)",
+    textDecorationLine: "line-through",
+  },
+  takenText: {
+    fontSize: 8,
+    color: COLORS.error,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginTop: 2,
   },
 });

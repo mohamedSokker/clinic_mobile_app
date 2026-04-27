@@ -23,6 +23,14 @@ export interface Diagnosis {
   doctorId: string;
   doctorName: string;
   clinicName: string;
+  doctor?: {
+    doctorName?: string;
+    specialization?: string;
+    clinicName?: string;
+    user?: {
+      name?: string;
+    }
+  };
   visitDate: Date;
   notes: string;
   vaccines: Vaccine[];

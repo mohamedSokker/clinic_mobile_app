@@ -13,24 +13,25 @@
       "resizeMode": "contain",
       "backgroundColor": "#070e1a"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.clinicapp.mobile"
+      "bundleIdentifier": "com.clinicapp.mobile",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "edgeToEdgeEnabled": true,
       "package": "com.clinicapp.mobile",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#070e1a"
       },
-      "googleServicesFile": "./google-services.json",
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {
       "bundler": "metro",
@@ -41,12 +42,23 @@
       "expo-router",
       "expo-web-browser",
       [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "The app needs access to your photos to upload profile pictures and analysis results."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/withNonModularHeaders",
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ],
     "experiments": {
       "typedRoutes": true
