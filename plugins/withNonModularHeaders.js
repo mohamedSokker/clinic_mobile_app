@@ -14,10 +14,21 @@ module.exports = function withNonModularHeaders(config) {
 
       const fix = `
       ${fixIdentifier}
+      
+      # 1. Fix broken Firebase Messaging source files (v24.0.0 bug)
+      puts "Applying patches via patch-package..."
+      system("cd .. && npx patch-package")
+
       installer.pods_project.targets.each do |target|
         target.build_configurations.each do |config|
+          # Allow non-modular includes (fixes the 'must be imported from module' errors)
           config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-          config.build_settings['DEFINES_MODULE'] = 'YES'
+          
+          # Force DEFINES_MODULE to NO for Firebase and React-Core if they are causing umbrella header conflicts
+          if ['RNFBApp', 'RNFBMessaging', 'React-Core'].include?(target.name)
+             config.build_settings['DEFINES_MODULE'] = 'NO'
+             config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+          end
         end
         
         # Specific fix for React Native Firebase modular header issues

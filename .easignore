@@ -14,4 +14,4 @@ bun.lock*
 android/
 ios/
 *.log
-package-lock.json
+
