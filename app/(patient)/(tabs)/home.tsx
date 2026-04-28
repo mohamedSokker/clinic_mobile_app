@@ -42,10 +42,33 @@ const FILTERS = [
   { id: "dermatology", label: "Dermatology" },
 ];
 
+const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) => {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c; // Distance in km
+  return d;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const { profile } = useAuthStore();
   const [activeSpec, setActiveSpec] = useState("all");
+
+  const patientLat = profile?.latitude;
+  const patientLng = profile?.longitude;
 
   const {
     data: doctors = [],
@@ -53,8 +76,8 @@ export default function HomeScreen() {
     refetch,
     isRefetching: refreshing,
   } = useQuery({
-    queryKey: ["doctors"],
-    queryFn: () => getAllDoctors(),
+    queryKey: ["doctors", patientLat, patientLng],
+    queryFn: () => getAllDoctors(undefined, patientLat, patientLng, 20),
   });
 
   const filtered = useMemo(() => {
@@ -64,8 +87,25 @@ export default function HomeScreen() {
         d.specialization.toLowerCase().includes(activeSpec.toLowerCase()),
       );
     }
+
+    // Apply 20km radius filter if patient location is available
+    if (patientLat && patientLng) {
+      result = result.filter((item: any) => {
+        if (item.latitude && item.longitude) {
+          const dist = calculateDistance(
+            patientLat,
+            patientLng,
+            item.latitude,
+            item.longitude,
+          );
+          return dist <= 20; // 20 km radius
+        }
+        return true; // Keep items without location for now
+      });
+    }
+
     return result;
-  }, [activeSpec, doctors]);
+  }, [activeSpec, doctors, patientLat, patientLng]);
 
   const HomeHeader = useMemo(() => {
     return (
@@ -84,7 +124,7 @@ export default function HomeScreen() {
           {/* Search bar — navigates to Explore */}
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={() => router.push("/(patient)/explore")}
+            onPress={() => router.push("/(patient)/(tabs)/explore")}
             style={s.searchPill}
           >
             <Search size={20} color={COLORS.primary} style={s.searchIcon} />
@@ -141,7 +181,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={s.viewAllBtn}
             activeOpacity={0.8}
-            onPress={() => router.push("/(patient)/explore")}
+            onPress={() => router.push("/(patient)/(tabs)/explore")}
           >
             <Text style={s.viewAllText}>View all</Text>
             <ArrowRight size={14} color={COLORS.primary} />
@@ -226,7 +266,7 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={s.bentoLargeBtn}
                     activeOpacity={0.85}
-                    onPress={() => router.push("/(patient)/explore")}
+                    onPress={() => router.push("/(patient)/(tabs)/explore")}
                   >
                     <Text style={s.bentoLargeBtnText}>EXPLORE LABS</Text>
                   </TouchableOpacity>
@@ -250,7 +290,7 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={[s.bentoSmallTile, s.glassCard]}
                   activeOpacity={0.85}
-                  onPress={() => router.push("/(patient)/history")}
+                  onPress={() => router.push("/(patient)/(tabs)/history")}
                 >
                   <History
                     size={28}
@@ -279,7 +319,7 @@ export default function HomeScreen() {
 
       <TouchableOpacity
         style={s.fab}
-        onPress={() => router.push("/(patient)/explore")}
+        onPress={() => router.push("/(patient)/(tabs)/explore")}
         activeOpacity={0.85}
       >
         <LinearGradient

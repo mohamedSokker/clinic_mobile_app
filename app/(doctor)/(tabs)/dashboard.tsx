@@ -66,14 +66,13 @@ export default function DoctorDashboard() {
     refetch: refetchReservations,
     isRefetching: refreshing,
   } = useQuery({
-    queryKey: ["reservations", "today"],
-    queryFn: () => getPaginatedReservationsForDoctor(new Date(), 1, 100),
+    queryKey: ["reservations", "today", "next-3"],
+    queryFn: () => getPaginatedReservationsForDoctor(new Date(), 1, 3, true),
     enabled: !!user,
   });
 
-  const allReservations = paginatedData?.reservations || [];
-  const activeReservations = allReservations.filter((r) => r.status !== "done");
-  const totalReservations = activeReservations.length;
+  const activeReservations = paginatedData?.reservations || [];
+  const totalReservations = paginatedData?.total || 0;
 
   const handleAddEmergency = async () => {
     if (!emergencyName || !doctor) return;
@@ -124,16 +123,23 @@ export default function DoctorDashboard() {
     }
   };
 
+  const { data: allDayData } = useQuery({
+    queryKey: ["reservations", "today", "stats"],
+    queryFn: () => getReservationsForDoctor(doctor!.id, new Date()),
+    enabled: !!doctor,
+  });
+
   const stats = useMemo(() => {
-    const confirmed = activeReservations.filter(
+    if (!allDayData) return { confirmed: 0, ongoing: 0, priority: 0 };
+    const confirmed = allDayData.filter(
       (r) => r.status === "confirmed" || r.status === "waiting",
     ).length;
-    const ongoing = activeReservations.filter(
-      (r) => r.status === "inside",
+    const ongoing = allDayData.filter((r) => r.status === "inside").length;
+    const priority = allDayData.filter(
+      (r) => r.isEmergency && r.status !== "done",
     ).length;
-    const priority = activeReservations.filter((r) => r.isEmergency).length;
     return { confirmed, ongoing, priority };
-  }, [activeReservations]);
+  }, [allDayData]);
 
   const activeBlocks = useMemo(() => {
     if (!doctor?.schedule)
@@ -288,7 +294,7 @@ export default function DoctorDashboard() {
               <Text style={styles.pipelineTitle}>QUEUE PIPELINE</Text>
               {totalReservations > 3 && (
                 <TouchableOpacity
-                  onPress={() => router.push("/(doctor)/queue")}
+                  onPress={() => router.push("/(doctor)/(tabs)/queue")}
                   style={styles.viewMoreInline}
                 >
                   <Text style={styles.viewMoreInlineText}>VIEW FULL QUEUE</Text>
@@ -312,6 +318,11 @@ export default function DoctorDashboard() {
                             `/(doctor)/patient/${r.patientId}?reservationId=${r.id}` as any,
                           )
                         }
+                        onViewDetails={() =>
+                          router.push(
+                            `/(doctor)/patient-details/${r.patientId}` as any,
+                          )
+                        }
                       />
                     ))
                 : !loading && (
@@ -326,7 +337,7 @@ export default function DoctorDashboard() {
               {totalReservations > 3 && (
                 <TouchableOpacity
                   style={styles.viewMoreCard}
-                  onPress={() => router.push("/(doctor)/queue")}
+                  onPress={() => router.push("/(doctor)/(tabs)/queue")}
                 >
                   <LinearGradient
                     colors={["rgba(64,206,243,0.1)", "rgba(64,206,243,0.02)"]}

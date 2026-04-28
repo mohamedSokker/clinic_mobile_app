@@ -77,3 +77,29 @@ export async function updateDoctorRating(doctorId: string, newRating: number, ne
     reviewCount: newCount,
   });
 }
+
+export async function getPatientFullProfile(patientId: string) {
+  const res = await api.get(`/users/patient/${patientId}/full-profile`);
+  return res.data;
+}
+
+export async function getPatientActivityLog(patientId: string, page: number = 1, perPage: number = 10) {
+  const res = await api.get(`/users/patient/${patientId}/activity`, {
+    params: { page, per_page: perPage },
+  });
+  return res.data;
+}
+
+export async function getPatientLabAnalysis(patientId: string, page: number = 1, perPage: number = 10) {
+  const res = await api.get(`/users/patient/${patientId}/analysis`, {
+    params: { page, per_page: perPage },
+  });
+  return res.data;
+}
+
+export async function getPatientDiagnosesLog(patientId: string, page: number = 1, perPage: number = 10) {
+  const res = await api.get(`/diagnosis/patient/${patientId}/paginated`, {
+    params: { page, per_page: perPage },
+  });
+  return res.data;
+}

@@ -67,6 +67,7 @@ export default function ExploreScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch] = useDebounce(searchQuery, 500);
   const [selectedFilter, setSelectedFilter] = useState("All");
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   const patientLat = profile?.latitude;
   const patientLng = profile?.longitude;
@@ -223,9 +224,31 @@ export default function ExploreScreen() {
 
               ${markers}
 
+              ${patientLat && patientLng ? `
+              var patientIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div style='background-color:#40cef3; width:16px; height:16px; border-radius:50%; border:3px solid #070e1a; box-shadow: 0 0 10px rgba(64,206,243,0.8);'></div>",
+                iconSize: [22, 22],
+                iconAnchor: [11, 11]
+              });
+              L.marker([${patientLat}, ${patientLng}], {icon: patientIcon, zIndexOffset: 1000}).addTo(map).bindPopup('<b>You are here</b>');
+              ` : ''}
+
+
               // Handle clicks from markers
               window.addEventListener('message', function(event) {
                 // Not needed for simple zoom injection
+              });
+
+              // Intercept touches to prevent outer scroll
+              document.getElementById('map').addEventListener('touchstart', function() {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({type: 'map_touch_start'}));
+              });
+              document.getElementById('map').addEventListener('touchend', function() {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({type: 'map_touch_end'}));
+              });
+              document.getElementById('map').addEventListener('touchcancel', function() {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({type: 'map_touch_end'}));
               });
           </script>
       </body>
@@ -246,6 +269,7 @@ export default function ExploreScreen() {
 
       <View style={{ flex: 1 }}>
         <ScrollView
+          scrollEnabled={scrollEnabled}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
@@ -349,9 +373,17 @@ export default function ExploreScreen() {
                 javaScriptEnabled={true}
                 domStorageEnabled={true}
                 onMessage={(event) => {
-                  const data = JSON.parse(event.nativeEvent.data);
-                  if (data.type === "navigate") {
-                    openInGoogleMaps(data.lat, data.lng, data.label);
+                  try {
+                    const data = JSON.parse(event.nativeEvent.data);
+                    if (data.type === "navigate") {
+                      openInGoogleMaps(data.lat, data.lng, data.label);
+                    } else if (data.type === "map_touch_start") {
+                      setScrollEnabled(false);
+                    } else if (data.type === "map_touch_end") {
+                      setScrollEnabled(true);
+                    }
+                  } catch (e) {
+                    console.log('WebView message error:', e);
                   }
                 }}
               />

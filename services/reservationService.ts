@@ -26,10 +26,23 @@ export async function getReservationsForDoctor(doctorId: string, date: Date): Pr
   return res.data;
 }
 
+export async function getReservationsForLab(labId: string, date: Date): Promise<Reservation[]> {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const localDateStr = `${year}-${month}-${day}`;
+
+  const res = await api.get(`/reservations/lab/${labId}`, {
+    params: { date: localDateStr }
+  });
+  return res.data;
+}
+
 export async function getPaginatedReservationsForDoctor(
   date: Date,
   page: number = 1,
   perPage: number = 3,
+  nextOnly: boolean = false,
 ): Promise<{ reservations: Reservation[]; total: number; totalPages: number; page: number }> {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -40,7 +53,8 @@ export async function getPaginatedReservationsForDoctor(
     params: { 
       date: localDateStr,
       page,
-      per_page: perPage
+      per_page: perPage,
+      next_only: nextOnly
     }
   });
   return res.data;
@@ -48,6 +62,23 @@ export async function getPaginatedReservationsForDoctor(
 
 export async function getReservationsForPatient(patientId: string): Promise<Reservation[]> {
   const res = await api.get('/reservations/patient');
+  return res.data;
+}
+
+export async function getPaginatedReservationsForPatient(
+  page: number = 1,
+  perPage: number = 3,
+): Promise<{ reservations: Reservation[]; total: number; totalPages: number; page: number }> {
+  const res = await api.get('/reservations/patient/paginated', {
+    params: { page, per_page: perPage }
+  });
+  return res.data;
+}
+
+export async function getLiveClinicQueue(doctorId?: string): Promise<{ clinicInfo: any, queue: any[], myPatientId: string }> {
+  const res = await api.get('/reservations/patient/live-queue', {
+    params: { doctorId }
+  });
   return res.data;
 }
 

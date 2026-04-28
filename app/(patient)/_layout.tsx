@@ -1,9 +1,6 @@
-import { Tabs, useSegments } from "expo-router";
+import { Stack, useSegments } from "expo-router";
 import { View } from "react-native";
-import { LayoutGrid, CalendarDays, FileText } from "lucide-react-native";
-import { COLORS, FONT_FAMILY } from "@/lib/theme";
 import { useAuthStore } from "@/stores/authStore";
-import { MaterialIcons } from "@expo/vector-icons";
 import { TopAppBar } from "@/components/ui/TopAppBar";
 
 export default function PatientLayout() {
@@ -15,7 +12,9 @@ export default function PatientLayout() {
   // Dynamic header configuration
   const currentScreen = segments[segments.length - 1];
   const parentScreen = segments[segments.length - 2];
-  const isSubPage = segments.length > 2 && !["home", "explore", "history", "schedule"].includes(currentScreen);
+  
+  // A screen is a subpage if it's NOT one of the main tabs
+  const isSubPage = !["home", "explore", "history", "schedule"].includes(currentScreen);
 
   const titles: Record<string, string> = {
     home: "Wellness Overview",
@@ -32,6 +31,7 @@ export default function PatientLayout() {
     doctor: "Practitioner Insights",
     lab: "Facility Details",
     queue: "Live Tracker",
+    "live-feed": "Activity History",
   };
 
   // Check parent for dynamic routes (e.g. doctor/[id])
@@ -44,80 +44,14 @@ export default function PatientLayout() {
         title={title} 
         showBack={isSubPage} 
       />
-      <Tabs
+      <Stack
         screenOptions={{
           headerShown: false,
-          tabBarStyle: {
-            backgroundColor: "#070e1a",
-            borderTopColor: "rgba(255,255,255,0.05)",
-            borderTopWidth: 1,
-            paddingBottom: 8,
-            paddingTop: 8,
-            height: 68,
-          },
-          tabBarActiveTintColor: COLORS.primary,
-          tabBarInactiveTintColor: "rgba(229, 235, 253, 0.3)",
-          tabBarLabelStyle: { fontSize: 11, fontFamily: FONT_FAMILY.label },
+          animation: "slide_from_right",
         }}
       >
-        <Tabs.Screen
-          name="home"
-          options={{
-            title: "Home",
-            tabBarIcon: ({ color, size }) => (
-              <LayoutGrid size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="explore"
-          options={{
-            title: "Explore",
-            tabBarIcon: ({ color, size }) => (
-              <MaterialIcons name="map" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="history"
-          options={{
-            title: "Records",
-            tabBarIcon: ({ color, size }) => (
-              <FileText size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="schedule"
-          options={{
-            title: "Schedule",
-            tabBarIcon: ({ color, size }) => (
-              <CalendarDays size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="notifications"
-          options={{
-            href: null,
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            href: null,
-          }}
-        />
-        <Tabs.Screen name="doctor/[id]" options={{ href: null }} />
-        <Tabs.Screen name="queue/[clinicId]" options={{ href: null }} />
-        <Tabs.Screen name="lab/[id]" options={{ href: null }} />
-        <Tabs.Screen name="lab/[id]/book" options={{ href: null }} />
-        <Tabs.Screen name="diagnoses" options={{ href: null }} />
-        <Tabs.Screen name="lab-analysis" options={{ href: null }} />
-        <Tabs.Screen name="vaccines" options={{ href: null }} />
-        <Tabs.Screen name="activity" options={{ href: null }} />
-        <Tabs.Screen name="edit-profile" options={{ href: null }} />
-      </Tabs>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      </Stack>
     </View>
   );
 }

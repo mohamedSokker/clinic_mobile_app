@@ -12,6 +12,7 @@ import {
   Modal,
   Linking,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -24,10 +25,17 @@ import { COLORS, FONT_FAMILY, RADIUS, GRADIENTS } from "@/lib/theme";
 import { BackgroundDecor } from "@/components/ui/BackgroundDecor";
 import Toast from "react-native-toast-message";
 import type { Reservation } from "@/types/reservation";
+import dayjs from "dayjs";
+import duration from "dayjs/plugin/duration";
+import relativeTime from "dayjs/plugin/relativeTime";
+
+dayjs.extend(duration);
+dayjs.extend(relativeTime);
 
 const { width: SW } = Dimensions.get("window");
 
 export default function PatientScheduleScreen() {
+  const router = useRouter();
   const { profile } = useAuthStore();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,8 +71,12 @@ export default function PatientScheduleScreen() {
 
   useEffect(() => {
     fetchReservations();
-    const timer = setInterval(() => setNow(new Date()), 60000);
-    return () => clearInterval(timer);
+    const pollTimer = setInterval(fetchReservations, 10000);
+    const clockTimer = setInterval(() => setNow(new Date()), 60000);
+    return () => {
+      clearInterval(pollTimer);
+      clearInterval(clockTimer);
+    };
   }, [profile?.id]);
 
   const onRefresh = () => {
@@ -115,46 +127,73 @@ export default function PatientScheduleScreen() {
   };
 
   const getReservationStatus = (res: Reservation) => {
-    const resDate = new Date(res.expectedTime || res.dateTime);
-    const diffMs = resDate.getTime() - now.getTime();
-    const diffMins = Math.max(0, Math.floor(diffMs / 60000));
+    const resTime = dayjs(res.expectedTime || res.dateTime).local();
+    const nowTime = dayjs();
 
-    const hours = Math.floor(diffMins / 60);
-    const mins = diffMins % 60;
-    const formattedTime = `${hours.toString().padStart(2, "0")}:${mins
+    // const appointmentTime = resTime.format("HH:mm");
+    const appointmentTime = "00:00";
+
+    const diffMins = resTime.diff(nowTime, "minute");
+    const absMins = Math.abs(diffMins);
+    const hours = Math.floor(absMins / 60);
+    const mins = absMins % 60;
+    const countdown = `${diffMins < 0 ? "-" : ""}${hours
       .toString()
-      .padStart(2, "0")}`;
+      .padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
 
-    if (res.exitTime) {
-      return {
-        status: "Completed",
-        time: "00:00",
-        color: COLORS.primary,
-        icon: "check-circle",
-      };
-    }
-
-    if (diffMs < 0) {
-      if (!res.entryTime) {
+    // Priority 1: Use backend status
+    switch (res.status) {
+      case "done":
         return {
-          status: "Missed",
-          time: "00:00",
-          color: COLORS.error,
+          status: "COMPLETED",
+          time: appointmentTime,
+          color: "#00E676", // Green
+          icon: "check-circle",
+        };
+      case "inside":
+        return {
+          status: "ONGOING",
+          time: appointmentTime,
+          color: "#FFD700", // Gold
+          icon: "rotate-right",
+        };
+      case "waiting":
+        return {
+          status: "WAITING",
+          time: appointmentTime,
+          color: "#FFAB40", // Orange
+          icon: "how-to-reg",
+        };
+      case "no-show":
+        return {
+          status: "MISSED",
+          time: appointmentTime,
+          color: "#FF5252", // Red
           icon: "event-busy",
         };
-      }
+      case "cancelled":
+        return {
+          status: "CANCELLED",
+          time: appointmentTime,
+          color: "rgba(255,255,255,0.3)",
+          icon: "cancel",
+        };
+    }
+
+    // Priority 2: Fallback to time-based status for pending/confirmed
+    if (diffMins < 0) {
       return {
-        status: "Current",
-        time: formattedTime,
-        color: COLORS.tertiary,
-        icon: "rotate-right",
+        status: "MISSED",
+        time: appointmentTime,
+        color: "#FF5252",
+        icon: "event-busy",
       };
     }
 
     return {
-      status: "Pending",
-      time: formattedTime,
-      color: COLORS.primary,
+      status: "PENDING",
+      time: countdown,
+      color: "#FF5252", // Red
       icon: "schedule",
     };
   };
@@ -162,6 +201,16 @@ export default function PatientScheduleScreen() {
   const activeReservations = useMemo(() => {
     return reservations.filter((r) => r.status !== "cancelled");
   }, [reservations]);
+
+  const displayReservations = useMemo(() => {
+    // Sort DESC (Newest first) and take last 3 for the preview
+    return [...activeReservations]
+      .sort(
+        (a, b) =>
+          new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime(),
+      )
+      .slice(0, 3);
+  }, [activeReservations]);
 
   const currentRes = activeReservations[activeReservations.length - 1];
 
@@ -347,11 +396,15 @@ export default function PatientScheduleScreen() {
                     {currentRes.doctor?.location || currentRes.lab?.location}
                   </Text>
                 </View>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={s.bentoMapBtn}
                   onPress={() => openMap(currentRes)}
                 >
-                  <MaterialIcons name="directions" size={20} color={COLORS.primary} />
+                  <MaterialIcons
+                    name="directions"
+                    size={20}
+                    color={COLORS.primary}
+                  />
                 </TouchableOpacity>
               </View>
             </View>
@@ -359,14 +412,32 @@ export default function PatientScheduleScreen() {
 
           <View style={s.timelineSection}>
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>Live Feed</Text>
-              <View style={s.realtimeBadge}>
-                <Text style={s.realtimeText}>REAL-TIME</Text>
-              </View>
+              <Text style={s.sectionTitle}>Live Queue Tracker</Text>
+              {activeReservations.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    const firstDoctorRes = activeReservations.find(
+                      (r) => r.doctorId,
+                    );
+                    const query = firstDoctorRes?.doctorId
+                      ? `?doctorId=${firstDoctorRes.doctorId}`
+                      : "";
+                    router.push(`/(patient)/live-feed${query}` as any);
+                  }}
+                  style={s.viewMoreInline}
+                >
+                  <Text style={s.viewMoreInlineText}>View More</Text>
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={s.timeline}>
-              {activeReservations.map((res, idx) => {
+              {displayReservations.map((res, idx) => {
                 const { status, color, icon } = getReservationStatus(res);
                 const entityName =
                   res.doctor?.doctorName ||
@@ -380,11 +451,18 @@ export default function PatientScheduleScreen() {
                   res.labName;
                 const entityLocation =
                   res.doctor?.location || res.lab?.location || "Main Branch";
-                const entityPhoto = res.doctor?.user?.photoURL || res.lab?.user?.photoURL || res.doctor?.photoURL || res.lab?.photoURL;
+                const entityPhoto =
+                  res.doctor?.user?.photoURL ||
+                  res.lab?.user?.photoURL ||
+                  res.doctor?.photoURL ||
+                  res.lab?.photoURL;
 
                 return (
-                  <View
+                  <TouchableOpacity
                     key={res.id}
+                    onPress={() =>
+                      router.push(`/(patient)/reservation-details/${res.id}`)
+                    }
                     style={[s.timelineRow, { borderLeftColor: color }]}
                   >
                     <View style={s.timelineLeft}>
@@ -405,25 +483,41 @@ export default function PatientScheduleScreen() {
                         <Text style={s.timelineTitle} numberOfLines={1}>
                           {entityName}
                         </Text>
-                        <View style={[s.miniStatusBadge, { backgroundColor: `${color}15` }]}>
-                          <Text style={[s.miniStatusText, { color }]}>{status.toUpperCase()}</Text>
+                        <View
+                          style={[
+                            s.miniStatusBadge,
+                            { backgroundColor: `${color}15` },
+                          ]}
+                        >
+                          <Text style={[s.miniStatusText, { color }]}>
+                            {status.toUpperCase()}
+                          </Text>
                         </View>
                       </View>
-                      
+
                       <Text style={s.timelineClinic} numberOfLines={1}>
                         {entityClinic} • {entityLocation}
                       </Text>
 
                       <View style={s.timelineDetailsRow}>
                         <View style={s.detailItem}>
-                          <MaterialIcons name="event" size={12} color="rgba(255,255,255,0.4)" />
+                          <MaterialIcons
+                            name="event"
+                            size={12}
+                            color="rgba(255,255,255,0.4)"
+                          />
                           <Text style={s.detailText}>
-                            {new Date(res.dateTime).toLocaleDateString([], { month: 'short', day: 'numeric' })} at {new Date(res.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {dayjs(res.dateTime).local().format("MMM D")} at{" "}
+                            {dayjs(res.dateTime).local().format("hh:mm A")}
                           </Text>
                         </View>
                         {res.selectedTest && (
                           <View style={s.detailItem}>
-                            <MaterialIcons name="biotech" size={12} color="rgba(255,255,255,0.4)" />
+                            <MaterialIcons
+                              name="biotech"
+                              size={12}
+                              color="rgba(255,255,255,0.4)"
+                            />
                             <Text style={s.detailText}>{res.selectedTest}</Text>
                           </View>
                         )}
@@ -432,31 +526,45 @@ export default function PatientScheduleScreen() {
                       {res.symptoms && (
                         <View style={s.symptomsBox}>
                           <Text style={s.symptomsLabel}>Symptoms:</Text>
-                          <Text style={s.symptomsText} numberOfLines={2}>{res.symptoms}</Text>
+                          <Text style={s.symptomsText} numberOfLines={2}>
+                            {res.symptoms}
+                          </Text>
                         </View>
                       )}
                     </View>
 
                     <View style={s.timelineRight}>
                       {(res.doctor?.latitude || res.lab?.latitude) && (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={s.miniMapBtn}
                           onPress={() => openMap(res)}
                         >
-                          <MaterialIcons name="map" size={16} color={COLORS.primary} />
+                          <MaterialIcons
+                            name="map"
+                            size={16}
+                            color={COLORS.primary}
+                          />
                         </TouchableOpacity>
                       )}
-                      {status === "Pending" && (
-                        <TouchableOpacity 
+                      {status === "PENDING" && (
+                        <TouchableOpacity
                           style={s.cancelIconBtn}
                           onPress={() => handleCancel(res)}
                         >
-                          <MaterialIcons name="close" size={18} color={COLORS.error} />
+                          <MaterialIcons
+                            name="close"
+                            size={18}
+                            color={COLORS.error}
+                          />
                         </TouchableOpacity>
                       )}
-                      <MaterialIcons name={icon as any} size={20} color={color} />
+                      <MaterialIcons
+                        name={icon as any}
+                        size={20}
+                        color={color}
+                      />
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -481,7 +589,11 @@ export default function PatientScheduleScreen() {
             >
               <View style={s.modalHeader}>
                 <View style={s.warningIconBox}>
-                  <MaterialIcons name="warning" size={32} color={COLORS.error} />
+                  <MaterialIcons
+                    name="warning"
+                    size={32}
+                    color={COLORS.error}
+                  />
                 </View>
                 <Text style={s.modalTitle}>Cancel Reservation?</Text>
                 <Text style={s.modalSubtitle}>
@@ -700,8 +812,8 @@ const s = StyleSheet.create({
   timelineSection: { marginBottom: 32 },
   sectionHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
     marginBottom: 16,
   },
   sectionTitle: {
@@ -709,6 +821,16 @@ const s = StyleSheet.create({
     fontSize: 22,
     fontFamily: FONT_FAMILY.headline,
     fontWeight: "800",
+  },
+  viewMoreInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  viewMoreInlineText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: "600",
   },
   realtimeBadge: {
     backgroundColor: "rgba(64, 206, 243, 0.1)",
@@ -824,12 +946,7 @@ const s = StyleSheet.create({
     paddingTop: 4,
   },
   cancelIconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(255, 82, 82, 0.1)",
-    justifyContent: "center",
-    alignItems: "center",
+    padding: 4,
   },
   miniMapBtn: {
     width: 28,

@@ -9,6 +9,7 @@ import {
   Image,
   Dimensions,
   Animated,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -51,6 +52,7 @@ export default function DoctorDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, profile } = useAuthStore();
+  const { height: screenHeight } = useWindowDimensions();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -175,18 +177,18 @@ export default function DoctorDetail() {
           contentContainerStyle={s.scroll}
         >
           {/* ── Profile Hero — full-width cinematic photo ── */}
-          <View style={s.heroWrap}>
+          <View style={[s.heroWrap, { height: screenHeight * 0.5 }]}>
             {doctor.photoURL ? (
               <Image
                 source={{ uri: doctor.photoURL }}
                 style={s.heroImage}
-                resizeMode="cover"
+                resizeMode="contain"
               />
             ) : (
               <Image
                 source={require("../../../assets/doctor_default.png")}
                 style={s.heroImage}
-                resizeMode="cover"
+                resizeMode="contain"
               />
               // <View
               //   style={[
@@ -203,11 +205,13 @@ export default function DoctorDetail() {
             />
             {/* Content pinned to bottom of hero */}
             <View style={s.heroContent}>
-              <View style={s.heroBadgeRow}>
-                <View style={s.heroBadge}>
-                  <Text style={s.heroBadgeText}>{badge.toUpperCase()}</Text>
+              {badge && badge !== "" && (
+                <View style={s.heroBadgeRow}>
+                  <View style={s.heroBadge}>
+                    <Text style={s.heroBadgeText}>{badge.toUpperCase()}</Text>
+                  </View>
                 </View>
-              </View>
+              )}
               <Text style={s.heroName}>{doctor.doctorName}</Text>
               <Text style={s.heroSpecialty}>{doctor.specialization}</Text>
               <View style={s.heroMeta}>
@@ -555,8 +559,7 @@ const s = StyleSheet.create({
 
   // Hero
   heroWrap: {
-    width: SW,
-    aspectRatio: 4 / 5,
+    width: "100%",
     justifyContent: "flex-end",
     overflow: "hidden",
   },

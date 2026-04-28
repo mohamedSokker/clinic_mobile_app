@@ -35,6 +35,7 @@ import {
 import {
   getReservationById,
   getReservationsForPatient,
+  updateReservationStatus,
 } from "@/services/reservationService";
 import {
   COLORS,
@@ -277,6 +278,42 @@ export default function PatientProfileScreen() {
                   {patientName}
                 </Text>
               </View>
+              {currentReservation && (
+                <TouchableOpacity
+                  style={[
+                    s.sessionControlBtn,
+                    currentReservation.status === "inside"
+                      ? s.sessionEndBtn
+                      : s.sessionStartBtn,
+                    currentReservation.status === "done" && { opacity: 0.5 },
+                  ]}
+                  onPress={async () => {
+                    if (currentReservation.status === "done") return;
+                    const isStarting = currentReservation.status !== "inside";
+                    const newStatus = isStarting ? "inside" : "done";
+                    try {
+                      await updateReservationStatus(
+                        currentReservation.id,
+                        newStatus,
+                      );
+                      Toast.show({
+                        type: "success",
+                        text1: isStarting ? "Session Started" : "Session Concluded",
+                      });
+                      queryClient.invalidateQueries({
+                        queryKey: ["reservation", effectiveReservationId],
+                      });
+                    } catch (err) {
+                      Toast.show({ type: "error", text1: "Update failed" });
+                    }
+                  }}
+                  disabled={currentReservation.status === "done"}
+                >
+                  <Text style={s.sessionControlBtnText}>
+                    {currentReservation.status === "inside" ? "STOP" : "START"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Diagnosis Section */}
@@ -761,5 +798,24 @@ const s = StyleSheet.create({
     marginBottom: 12,
     fontFamily: FONT_FAMILY.body,
     fontWeight: "600",
+  },
+  sessionControlBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sessionStartBtn: {
+    backgroundColor: COLORS.primary,
+  },
+  sessionEndBtn: {
+    backgroundColor: COLORS.error,
+  },
+  sessionControlBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1,
   },
 });

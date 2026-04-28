@@ -64,11 +64,14 @@ export default function DoctorQueue() {
             onPress={() =>
               router.push(`/(doctor)/patient/${item.patientId}?reservationId=${item.id}` as any)
             }
+            onViewDetails={() =>
+              router.push(`/(doctor)/patient-details/${item.patientId}` as any)
+            }
           />
         )}
         contentContainerStyle={styles.listContent}
         onEndReached={() => {
-          if (hasNextPage) fetchNextPage();
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
         }}
         onEndReachedThreshold={0.5}
         ListFooterComponent={() =>
@@ -76,6 +79,10 @@ export default function DoctorQueue() {
             <View style={styles.loader}>
               <ActivityIndicator color={COLORS.primary} />
             </View>
+          ) : hasNextPage ? (
+            <TouchableOpacity onPress={() => fetchNextPage()} style={styles.loader}>
+              <Text style={{ color: COLORS.primary, fontFamily: FONT_FAMILY.label }}>Load More</Text>
+            </TouchableOpacity>
           ) : null
         }
         ListEmptyComponent={() =>

@@ -19,6 +19,7 @@ interface ReservationCardProps {
   reservation: Reservation;
   position: number;
   onPress?: () => void;
+  onViewDetails?: () => void;
   showActions?: boolean;
 }
 
@@ -26,18 +27,19 @@ export function ReservationCard({
   reservation,
   position,
   onPress,
+  onViewDetails,
   showActions = true,
 }: ReservationCardProps) {
   const router = useRouter();
   const time =
-    reservation.dateTime instanceof Date
-      ? reservation.dateTime.toLocaleTimeString([], {
+    (reservation.expectedTime || reservation.dateTime) instanceof Date
+      ? (reservation.expectedTime || reservation.dateTime).toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
           hour12: false,
         })
-      : typeof reservation.dateTime === "string"
-        ? new Date(reservation.dateTime).toLocaleTimeString([], {
+      : typeof (reservation.expectedTime || reservation.dateTime) === "string"
+        ? new Date(reservation.expectedTime || reservation.dateTime).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
             hour12: false,
@@ -45,13 +47,13 @@ export function ReservationCard({
         : "--:--";
 
   const date =
-    reservation.dateTime instanceof Date
-      ? reservation.dateTime.toLocaleDateString([], {
+    (reservation.expectedTime || reservation.dateTime) instanceof Date
+      ? (reservation.expectedTime || reservation.dateTime).toLocaleDateString([], {
           month: "short",
           day: "numeric",
         })
-      : typeof reservation.dateTime === "string"
-        ? new Date(reservation.dateTime).toLocaleDateString([], {
+      : typeof (reservation.expectedTime || reservation.dateTime) === "string"
+        ? new Date(reservation.expectedTime || reservation.dateTime).toLocaleDateString([], {
             month: "short",
             day: "numeric",
           })
@@ -198,9 +200,18 @@ export function ReservationCard({
           </View>
         </View>
 
-        {/* Action Column */}
+        {/* Action Bottom Row */}
         {showActions && (
           <View style={styles.actions}>
+            {onViewDetails && (
+              <TouchableOpacity
+                style={styles.viewDetailsBtn}
+                onPress={onViewDetails}
+              >
+                <FileText size={16} color={COLORS.primary} />
+                <Text style={styles.viewDetailsText}>VIEW DETAILS</Text>
+              </TouchableOpacity>
+            )}
             {reservation.status !== "done" && (
               <TouchableOpacity
                 style={[styles.primaryAction, isInside && styles.ongoingAction]}
@@ -209,10 +220,11 @@ export function ReservationCard({
                 }
               >
                 {isInside ? (
-                  <Square size={20} color="#fff" fill="#fff" />
+                  <Square size={16} color="#fff" fill="#fff" />
                 ) : (
-                  <Play size={20} color="#fff" fill="#fff" />
+                  <Play size={16} color="#fff" fill="#fff" />
                 )}
+                <Text style={styles.primaryActionText}>{isInside ? "END SESSION" : "START SESSION"}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -225,8 +237,8 @@ export function ReservationCard({
 const styles = StyleSheet.create({
   wrapper: { marginVertical: 6 },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "stretch",
     padding: 16,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.primary,
@@ -236,7 +248,7 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.error,
     backgroundColor: "rgba(255, 113, 108, 0.05)",
   },
-  mainInfo: { flex: 1, flexDirection: "row", alignItems: "center", gap: 16 },
+  mainInfo: { flexDirection: "row", alignItems: "center", gap: 16 },
 
   profileSection: { alignItems: "center", minWidth: 70, gap: 8 },
   avatarContainer: { position: "relative" },
@@ -347,9 +359,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  actions: { marginLeft: 8, flexShrink: 0 },
+  actions: { 
+    flexDirection: "row", 
+    gap: 12, 
+    alignItems: "center", 
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)"
+  },
+  viewDetailsBtn: {
+    flex: 1,
+    flexDirection: "row",
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(64,206,243,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(64,206,243,0.2)",
+    gap: 8,
+  },
+  viewDetailsText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
   primaryAction: {
-    width: 44,
+    flex: 1,
+    flexDirection: "row",
     height: 44,
     borderRadius: 14,
     backgroundColor: COLORS.primary,
@@ -360,6 +399,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
+    gap: 8,
+  },
+  primaryActionText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   ongoingAction: {
     backgroundColor: COLORS.tertiary,
