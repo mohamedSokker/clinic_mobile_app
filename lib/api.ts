@@ -10,7 +10,7 @@ const localhost = debuggerHost?.split(":").shift() || "localhost";
 // For iOS and physical devices, the actual machine IP is better
 const BASE_URL = __DEV__
   ? `http://${localhost}:3000`
-  : "https://clinic-backend-unuz.onrender.com";
+  : "https://clinic-backend-1-85ld.onrender.com";
 
 console.log("API BASE_URL:", BASE_URL);
 
