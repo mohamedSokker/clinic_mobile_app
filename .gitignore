@@ -17,5 +17,6 @@ ios/
 *.log
 google-services.json
 GoogleService-Info.plist
+eas.json
 
 .env
