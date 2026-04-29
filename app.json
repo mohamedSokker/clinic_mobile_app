@@ -2,7 +2,7 @@
   "expo": {
     "name": "ClinicApp",
     "slug": "clinic-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "clinicapp",
@@ -18,7 +18,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.clinicapp.mobile",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
