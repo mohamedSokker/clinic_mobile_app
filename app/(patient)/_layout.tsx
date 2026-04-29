@@ -11,7 +11,7 @@ export default function PatientLayout() {
 
   // Dynamic header configuration
   const currentScreen = segments[segments.length - 1];
-  const parentScreen = segments[segments.length - 2];
+  const parentScreen = segments.length > 1 ? segments[segments.length - 2] : null;
   
   // A screen is a subpage if it's NOT one of the main tabs
   const isSubPage = !["home", "explore", "history", "schedule"].includes(currentScreen);
@@ -35,7 +35,10 @@ export default function PatientLayout() {
   };
 
   // Check parent for dynamic routes (e.g. doctor/[id])
-  const titleKey = ["doctor", "lab", "queue"].includes(parentScreen) ? parentScreen : currentScreen;
+  const titleKey =
+    parentScreen && ["doctor", "lab", "queue"].includes(parentScreen)
+      ? parentScreen
+      : currentScreen;
   const title = titles[titleKey] || "";
 
   return (

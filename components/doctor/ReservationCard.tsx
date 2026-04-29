@@ -15,12 +15,15 @@ import { COLORS, RADIUS, FONT_FAMILY } from "@/lib/theme";
 import type { Reservation } from "@/types/reservation";
 import { Avatar } from "../ui/Avatar";
 
+import dayjs from "dayjs";
+
 interface ReservationCardProps {
   reservation: Reservation;
   position: number;
   onPress?: () => void;
   onViewDetails?: () => void;
   showActions?: boolean;
+  role?: "doctor" | "lab";
 }
 
 export function ReservationCard({
@@ -29,35 +32,13 @@ export function ReservationCard({
   onPress,
   onViewDetails,
   showActions = true,
+  role = "doctor",
 }: ReservationCardProps) {
   const router = useRouter();
-  const time =
-    (reservation.expectedTime || reservation.dateTime) instanceof Date
-      ? (reservation.expectedTime || reservation.dateTime).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        })
-      : typeof (reservation.expectedTime || reservation.dateTime) === "string"
-        ? new Date(reservation.expectedTime || reservation.dateTime).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })
-        : "--:--";
-
-  const date =
-    (reservation.expectedTime || reservation.dateTime) instanceof Date
-      ? (reservation.expectedTime || reservation.dateTime).toLocaleDateString([], {
-          month: "short",
-          day: "numeric",
-        })
-      : typeof (reservation.expectedTime || reservation.dateTime) === "string"
-        ? new Date(reservation.expectedTime || reservation.dateTime).toLocaleDateString([], {
-            month: "short",
-            day: "numeric",
-          })
-        : "";
+  
+  const displayDate = reservation.expectedTime || reservation.dateTime;
+  const time = dayjs(displayDate).format("HH:mm");
+  const date = dayjs(displayDate).format("MMM D");
 
   const isEmergency = reservation.isEmergency;
   const isInside = reservation.status === "inside";
@@ -193,8 +174,12 @@ export function ReservationCard({
             <View style={styles.symptomsRow}>
               <FileText size={12} color="rgba(255,255,255,0.3)" />
               <Text style={styles.symptomsText} numberOfLines={1}>
-                {reservation.symptoms ||
-                  "Regular checkup and clinical evaluation."}
+                {role === "doctor"
+                  ? reservation.symptoms ||
+                    "Regular checkup and clinical evaluation."
+                  : reservation.selectedTest ||
+                    (reservation as any).testType ||
+                    "General Analysis"}
               </Text>
             </View>
           </View>
@@ -216,7 +201,7 @@ export function ReservationCard({
               <TouchableOpacity
                 style={[styles.primaryAction, isInside && styles.ongoingAction]}
                 onPress={() =>
-                  router.push(`/(doctor)/scan/${reservation.id}` as any)
+                  router.push(`/(${role})/scan/${reservation.id}` as any)
                 }
               >
                 {isInside ? (

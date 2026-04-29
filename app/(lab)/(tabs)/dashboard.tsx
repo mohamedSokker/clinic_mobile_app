@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Dimensions,
   ActivityIndicator,
   RefreshControl,
@@ -14,7 +13,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
-import { Play, Square } from "lucide-react-native";
+import { ReservationCard } from "@/components/doctor/ReservationCard";
+import { Play, Square, ChevronRight } from "lucide-react-native";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   COLORS,
@@ -24,84 +25,125 @@ import {
   FONT_FAMILY,
   GRADIENTS,
 } from "@/lib/theme";
-import api from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
+import { getLabByUid, getLabDashboard } from "@/services/labService";
+import { getPaginatedReservationsForLab } from "@/services/reservationService";
 
 const { width } = Dimensions.get("window");
 
 const DIAGNOSTIC_SERVICES = [
-  { id: "FBC", label: "Full Blood Count", icon: "bloodtype", provider: MaterialIcons },
-  { id: "Glucose", label: "Glucose Tolerance", icon: "water-drop", provider: MaterialIcons },
-  { id: "MRI", label: "MRI Scan", icon: "settings-overscan", provider: MaterialIcons },
-  { id: "Metabolic", label: "Metabolic Panel", icon: "biotech", provider: MaterialIcons },
-  { id: "Lipids", label: "Lipid Profile", icon: "opacity", provider: MaterialIcons },
-  { id: "Microbiology", label: "Microbiology", icon: "bug-report", provider: MaterialIcons },
-  { id: "Immunology", label: "Immunology", icon: "shield", provider: MaterialIcons },
-  { id: "Hormones", label: "Hormone Panel", icon: "medical-services", provider: MaterialIcons },
-  { id: "Genetics", label: "Genetic Screening", icon: "dna", provider: FontAwesome5 },
-  { id: "Pathology", label: "Histopathology", icon: "biotech", provider: MaterialIcons },
-  { id: "Toxicology", label: "Toxicology", icon: "science", provider: MaterialIcons },
-  { id: "Urinalysis", label: "Urinalysis", icon: "water", provider: MaterialIcons },
+  {
+    id: "FBC",
+    label: "Full Blood Count",
+    icon: "bloodtype",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Glucose",
+    label: "Glucose Tolerance",
+    icon: "water-drop",
+    provider: MaterialIcons,
+  },
+  {
+    id: "MRI",
+    label: "MRI Scan",
+    icon: "settings-overscan",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Metabolic",
+    label: "Metabolic Panel",
+    icon: "biotech",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Lipids",
+    label: "Lipid Profile",
+    icon: "opacity",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Microbiology",
+    label: "Microbiology",
+    icon: "bug-report",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Immunology",
+    label: "Immunology",
+    icon: "shield",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Hormones",
+    label: "Hormone Panel",
+    icon: "medical-services",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Genetics",
+    label: "Genetic Screening",
+    icon: "dna",
+    provider: FontAwesome5,
+  },
+  {
+    id: "Pathology",
+    label: "Histopathology",
+    icon: "biotech",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Toxicology",
+    label: "Toxicology",
+    icon: "science",
+    provider: MaterialIcons,
+  },
+  {
+    id: "Urinalysis",
+    label: "Urinalysis",
+    icon: "water",
+    provider: MaterialIcons,
+  },
 ];
-
-interface DashboardData {
-  stats: {
-    todayTests: number;
-    totalTests: number;
-    syncIntegrity: number;
-  };
-  recentUploads: Array<{
-    id: string;
-    fileName: string;
-    patientName: string;
-    uploadedAt: string;
-    type: string;
-  }>;
-  availableAnalysis: Array<{
-    id: string;
-    name: string;
-    cost: number;
-    status: string;
-    progress: number;
-  }>;
-  appointments: Array<{
-    id: string;
-    time: string;
-    date: string;
-    patientName: string;
-    patientPhoto?: string;
-    patientId: string;
-    testType: string;
-    status: string;
-  }>;
-}
 
 export default function LabDashboard() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [data, setData] = useState<DashboardData | null>(null);
 
-  const fetchDashboardData = async () => {
-    try {
-      const res = await api.get("/labs/dashboard");
-      setData(res.data);
-    } catch (err) {
-      console.error("Dashboard Fetch Error:", err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const { data: lab, refetch: refetchLab } = useQuery({
+    queryKey: ["lab", user?.uid],
+    queryFn: () => getLabByUid(user!.uid),
+    enabled: !!user,
+  });
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  const {
+    data: dashboardData,
+    isLoading: dashboardLoading,
+    refetch: refetchDashboard,
+  } = useQuery({
+    queryKey: ["labDashboard"],
+    queryFn: getLabDashboard,
+    enabled: !!user,
+  });
+
+  const {
+    data: paginatedData,
+    isLoading: loading,
+    refetch: refetchReservations,
+    isRefetching: refreshing,
+  } = useQuery({
+    queryKey: ["reservations", "lab", "today", "next-3"],
+    queryFn: () => getPaginatedReservationsForLab(new Date(), 1, 3, true),
+    enabled: !!user,
+  });
+
+  const activeReservations = paginatedData?.reservations || [];
+  const totalReservations = paginatedData?.total || 0;
 
   const onRefresh = () => {
-    setRefreshing(true);
-    fetchDashboardData();
+    refetchDashboard();
+    refetchReservations();
+    refetchLab();
   };
 
   if (loading && !refreshing) {
@@ -130,190 +172,128 @@ export default function LabDashboard() {
           />
         }
       >
-
-          {/* Today's Appointments */}
-          <LinearGradient
-            colors={["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"]}
-            style={styles.appointmentsCard}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Today's Appointments</Text>
+        {/* Queue Pipeline Section */}
+        <View style={styles.pipelineHeader}>
+          <Text style={styles.pipelineTitle}>QUEUE PIPELINE</Text>
+          {totalReservations > 3 && (
+            <TouchableOpacity
+              onPress={() => router.push("/(lab)/(tabs)/queue")}
+              style={styles.viewMoreInline}
+            >
+              <Text style={styles.viewMoreInlineText}>VIEW FULL QUEUE</Text>
               <MaterialIcons
-                name="event-note"
-                size={24}
+                name="chevron-right"
+                size={14}
                 color={COLORS.primary}
-                style={{ opacity: 0.3 }}
               />
-            </View>
+            </TouchableOpacity>
+          )}
+        </View>
 
-            {data?.appointments.map((item, idx) => {
-              const getServiceIcon = (name: string) => {
-                const lower = name.toLowerCase();
-                if (lower.includes("blood")) return "bloodtype";
-                if (lower.includes("glucose")) return "water-drop";
-                if (lower.includes("mri")) return "settings-overscan";
-                if (lower.includes("lipid")) return "opacity";
-                if (lower.includes("urine")) return "water";
-                return "biotech";
-              };
+        <View style={styles.pipelineList}>
+          {activeReservations.length > 0 ? (
+            activeReservations.map((item, idx) => (
+              <ReservationCard
+                key={item.id}
+                reservation={item}
+                position={idx + 1}
+                role="lab"
+                onPress={() =>
+                  router.push({
+                    pathname: "/(lab)/patient-analysis",
+                    params: { patientId: item.patientId },
+                  } as any)
+                }
+                onViewDetails={() =>
+                  router.push(`/(lab)/patient-details/${item.patientId}` as any)
+                }
+              />
+            ))
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Pipeline Clear</Text>
+              <Text style={styles.emptySubtext}>
+                No pending laboratory analysis sessions.
+              </Text>
+            </View>
+          )}
+
+          {totalReservations > 3 && (
+            <TouchableOpacity
+              style={styles.viewMoreCard}
+              onPress={() => router.push("/(lab)/(tabs)/queue")}
+            >
+              <LinearGradient
+                colors={["rgba(64,206,243,0.1)", "rgba(64,206,243,0.02)"]}
+                style={StyleSheet.absoluteFill}
+              />
+              <Text style={styles.viewMoreText}>
+                +{totalReservations - 3} MORE PATIENTS IN QUEUE
+              </Text>
+              <View style={styles.viewMoreCircle}>
+                <ChevronRight size={20} color={COLORS.primary} />
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Available Analysis */}
+        <LinearGradient
+          colors={["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"]}
+          style={styles.availableCard}
+        >
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Available Analysis</Text>
+            <MaterialIcons name="fact-check" size={20} color={COLORS.primary} />
+          </View>
+          <View style={styles.badgeContainer}>
+            {dashboardData?.availableAnalysis.map((item: any, idx: number) => {
+              const service = DIAGNOSTIC_SERVICES.find(
+                (s) => s.id === item.id || s.label === item.name,
+              );
+              const IconProvider = service?.provider || MaterialIcons;
+              const iconName = service?.icon || "science";
 
               return (
-                <TouchableOpacity
-                  key={item.id || idx}
-                  style={styles.appointmentRow}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(lab)/patient-analysis",
-                      params: { patientId: item.patientId },
-                    } as any)
-                  }
-                >
-                  {/* Left Side: Avatar & Identity */}
-                  <View style={styles.leftSection}>
-                    <View style={styles.patientAvatarWrapper}>
-                      <Image
-                        source={
-                          item.patientPhoto
-                            ? { uri: item.patientPhoto }
-                            : require("@/assets/default-avatar.png")
-                        }
-                        style={styles.patientAvatar}
-                      />
-                      <View style={styles.serviceIconOverlay}>
-                        <MaterialIcons
-                          name={getServiceIcon(item.testType) as any}
-                          size={10}
-                          color={COLORS.onPrimary}
-                        />
-                      </View>
-                    </View>
-
-                    <View style={styles.patientInfo}>
-                      <Text style={styles.patientName} numberOfLines={1}>
-                        {item.patientName}
-                      </Text>
-                      <View style={styles.testTypeRow}>
-                        <MaterialIcons
-                          name={getServiceIcon(item.testType) as any}
-                          size={12}
-                          color={COLORS.primary}
-                          style={{ marginRight: 4 }}
-                        />
-                        <Text style={styles.testType} numberOfLines={1}>
-                          {item.testType}
-                        </Text>
-                      </View>
-                    </View>
+                <View key={idx} style={styles.analysisBadge}>
+                  <IconProvider
+                    name={iconName as any}
+                    size={14}
+                    color={COLORS.primary}
+                  />
+                  <View>
+                    <Text style={styles.analysisBadgeText}>{item.name}</Text>
+                    <Text style={styles.analysisCostText}>${item.cost}</Text>
                   </View>
-
-                  {/* Right Side: Status & Time */}
-                  <View style={styles.rightSection}>
-                    <View
-                      style={[
-                        styles.badge,
-                        item.status === "inside" && {
-                          backgroundColor: "rgba(76, 175, 80, 0.1)",
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.badgeText,
-                          item.status === "inside" && { color: "#4CAF50" },
-                        ]}
-                      >
-                        {item.status.toUpperCase()}
-                      </Text>
-                    </View>
-
-                    <View style={styles.timeContainer}>
-                      <Text style={styles.dateText}>{item.date}</Text>
-                      <Text style={styles.timeText}>{item.time}</Text>
-                    </View>
-
-                    {item.status !== "done" && (
-                      <TouchableOpacity
-                        style={[
-                          styles.scanAction,
-                          item.status === "inside" && styles.scanActionActive,
-                        ]}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          router.push(`/(lab)/scan/${item.id}` as any);
-                        }}
-                      >
-                        {item.status === "inside" ? (
-                          <Square size={14} color="#fff" fill="#fff" />
-                        ) : (
-                          <Play size={14} color="#fff" fill="#fff" />
-                        )}
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                </View>
               );
             })}
-          </LinearGradient>
+          </View>
+        </LinearGradient>
 
-          {/* Available Analysis */}
-          <LinearGradient
-            colors={["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"]}
-            style={styles.availableCard}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Available Analysis</Text>
-              <MaterialIcons
-                name="fact-check"
-                size={20}
-                color={COLORS.primary}
-              />
-            </View>
-            <View style={styles.badgeContainer}>
-              {data?.availableAnalysis.map((item, idx) => {
-                const service = DIAGNOSTIC_SERVICES.find(s => s.id === item.id || s.label === item.name);
-                const IconProvider = service?.provider || MaterialIcons;
-                const iconName = service?.icon || "science";
+        {/* Pending Data Sets */}
+        <LinearGradient
+          colors={["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"]}
+          style={styles.uploadsCard}
+        >
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Recent Data Sets</Text>
+            <TouchableOpacity>
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
 
-                return (
-                  <View key={idx} style={styles.analysisBadge}>
-                    <IconProvider
-                      name={iconName as any}
-                      size={14}
-                      color={COLORS.primary}
-                    />
-                    <View>
-                      <Text style={styles.analysisBadgeText}>{item.name}</Text>
-                      <Text style={styles.analysisCostText}>${item.cost}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </LinearGradient>
-
-          {/* Pending Data Sets */}
-          <LinearGradient
-            colors={["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"]}
-            style={styles.uploadsCard}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Recent Data Sets</Text>
-              <TouchableOpacity>
-                <Text style={styles.viewAllText}>View All</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.uploadGrid}>
-              {data?.recentUploads.map((upload, idx) => (
-                <View key={idx} style={styles.uploadItem}>
-                  <View style={styles.uploadIconRow}>
-                    <MaterialIcons
-                      name={upload.type === "image" ? "visibility" : "biotech"}
-                      size={24}
-                      color={idx % 2 === 0 ? COLORS.primary : COLORS.secondary}
-                    />
-                    <View
-                      style={[
+          <View style={styles.uploadGrid}>
+            {dashboardData?.recentUploads.map((upload: any, idx: number) => (
+              <View key={idx} style={styles.uploadItem}>
+                <View style={styles.uploadIconRow}>
+                  <MaterialIcons
+                    name={upload.type === "image" ? "visibility" : "biotech"}
+                    size={24}
+                    color={idx % 2 === 0 ? COLORS.primary : COLORS.secondary}
+                  />
+                  <View
+                    style={[
                         styles.typeBadge,
                         {
                           backgroundColor:
@@ -321,58 +301,58 @@ export default function LabDashboard() {
                               ? "rgba(64, 206, 243, 0.1)"
                               : "rgba(197, 126, 255, 0.1)",
                         },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.typeBadgeText,
+                        {
+                          color:
+                            idx % 2 === 0 ? COLORS.primary : COLORS.secondary,
+                        },
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.typeBadgeText,
-                          {
-                            color:
-                              idx % 2 === 0 ? COLORS.primary : COLORS.secondary,
-                          },
-                        ]}
-                      >
-                        {upload.type.toUpperCase()}
-                      </Text>
-                    </View>
+                      {upload.type.toUpperCase()}
+                    </Text>
                   </View>
-                  <Text style={styles.uploadFileName} numberOfLines={1}>
-                    {upload.fileName}
-                  </Text>
-                  <Text style={styles.uploaderText}>
-                    Clinical Segment Propagated
-                  </Text>
-                  <TouchableOpacity style={styles.reviewButton}>
-                    <Text style={styles.reviewButtonText}>Review Segment</Text>
-                  </TouchableOpacity>
                 </View>
-              ))}
-            </View>
-          </LinearGradient>
+                <Text style={styles.uploadFileName} numberOfLines={1}>
+                  {upload.fileName}
+                </Text>
+                <Text style={styles.uploaderText}>
+                  Clinical Segment Propagated
+                </Text>
+                <TouchableOpacity style={styles.reviewButton}>
+                  <Text style={styles.reviewButtonText}>Review Segment</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </LinearGradient>
 
-          {/* Node Sync */}
-          <LinearGradient
-            colors={["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"]}
-            style={styles.syncCard}
-          >
-            <View style={styles.syncHeader}>
-              <View>
-                <Text style={styles.syncTitle}>Node Sync</Text>
-                <Text style={styles.syncSubtitle}>
-                  Real-time telemetry across laboratory clusters.
-                </Text>
-              </View>
-              <View style={styles.syncCircle}>
-                <Text style={styles.syncPercent}>
-                  {data?.stats.syncIntegrity}%
-                </Text>
-                <Text style={styles.syncLabel}>INTEGRITY</Text>
-              </View>
+        {/* Node Sync */}
+        <LinearGradient
+          colors={["rgba(17, 26, 40, 0.8)", "rgba(28, 38, 55, 0.8)"]}
+          style={styles.syncCard}
+        >
+          <View style={styles.syncHeader}>
+            <View>
+              <Text style={styles.syncTitle}>Node Sync</Text>
+              <Text style={styles.syncSubtitle}>
+                Real-time telemetry across laboratory clusters.
+              </Text>
             </View>
-            <TouchableOpacity style={styles.optimizeButton}>
-              <Text style={styles.optimizeButtonText}>OPTIMIZE CLUSTERS</Text>
-            </TouchableOpacity>
-          </LinearGradient>
+            <View style={styles.syncCircle}>
+              <Text style={styles.syncPercent}>
+                {dashboardData?.stats.syncIntegrity}%
+              </Text>
+              <Text style={styles.syncLabel}>INTEGRITY</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.optimizeButton}>
+            <Text style={styles.optimizeButtonText}>OPTIMIZE CLUSTERS</Text>
+          </TouchableOpacity>
+        </LinearGradient>
       </ScrollView>
     </View>
   );
@@ -649,7 +629,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: FONT_FAMILY.headline,
   },
-  uploadGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  uploadGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
   uploadItem: {
     width: "48%",
     marginBottom: 12,
@@ -771,5 +755,65 @@ const styles = StyleSheet.create({
   },
   scanActionActive: {
     backgroundColor: COLORS.tertiary,
+  },
+  pipelineHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+    marginTop: 20,
+  },
+  pipelineTitle: {
+    color: "rgba(255,255,255,0.3)",
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 2,
+  },
+  viewMoreInline: { flexDirection: "row", alignItems: "center", gap: 4 },
+  viewMoreInlineText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
+  },
+  pipelineList: { gap: 12 },
+  emptyCard: { padding: 40, alignItems: "center", gap: 12 },
+  emptyText: {
+    color: COLORS.onSurface,
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.headline,
+  },
+  emptySubtext: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
+    textAlign: "center",
+  },
+  viewMoreCard: {
+    height: 70,
+    borderRadius: RADIUS.xl,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: "rgba(64, 206, 243, 0.2)",
+    marginTop: 8,
+  },
+  viewMoreText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
+    fontWeight: "700",
+  },
+  viewMoreCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(64, 206, 243, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

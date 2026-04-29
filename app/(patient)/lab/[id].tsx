@@ -30,24 +30,66 @@ import { createReservation } from "@/services/reservationService";
 import { useAuthStore } from "@/stores/authStore";
 import { COLORS, RADIUS, FONT_FAMILY, GRADIENTS, SPACING } from "@/lib/theme";
 import { BackgroundDecor } from "@/components/ui/BackgroundDecor";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs from "dayjs";
 import { Avatar } from "@/components/ui/Avatar";
 import { MaterialIcons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 
 const { width: SW } = Dimensions.get("window");
 
+// Build a 7-day window starting from today
+function buildWeekDays(baseDate: Date) {
+  const days: {
+    date: Date;
+    dayLabel: string;
+    dayNum: number;
+    fullDay: string;
+  }[] = [];
+  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const fullNames = [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+  ];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(baseDate);
+    d.setDate(baseDate.getDate() + i);
+    days.push({
+      date: d,
+      dayLabel: names[d.getDay()],
+      dayNum: d.getDate(),
+      fullDay: fullNames[d.getDay()],
+    });
+  }
+  return days;
+}
+
 export default function LabDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, profile } = useAuthStore();
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [weekStart, setWeekStart] = useState(today);
   const [selectedAnalysis, setSelectedAnalysis] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isBooking, setIsBooking] = useState(false);
 
-  const { data: lab, isLoading, error } = useQuery({
+  const weekDays = buildWeekDays(weekStart);
+
+  const {
+    data: lab,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["lab", id],
     queryFn: () => getLabById(id),
     enabled: !!id,
@@ -55,19 +97,35 @@ export default function LabDetail() {
 
   const { data: availableSlots = [], isLoading: slotsLoading } = useQuery({
     queryKey: ["labSlots", id, selectedDate?.toISOString()],
-    queryFn: () => getLabAvailableTimeSlots(id, selectedDate!, lab!.workingHours),
+    queryFn: () =>
+      getLabAvailableTimeSlots(id, selectedDate!, lab!.workingHours),
     enabled: !!lab && !!selectedDate,
   });
 
-  const next7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    return d;
+  const { data: weekAvailability } = useQuery({
+    queryKey: ["weekAvailability", lab?.id, weekStart.toDateString()],
+    queryFn: async () => {
+      const days = buildWeekDays(weekStart);
+      return Promise.all(
+        days.map((d) =>
+          getLabAvailableTimeSlots(lab!.id, d.date, lab!.workingHours),
+        ),
+      );
+    },
+    enabled: !!lab,
   });
 
+  const queryClient = useQueryClient();
+
   const handleBooking = async () => {
-    if (!selectedAnalysis || !selectedDate || !selectedTime || !lab || !user || !profile) {
+    if (
+      !selectedAnalysis ||
+      !selectedDate ||
+      !selectedTime ||
+      !lab ||
+      !user ||
+      !profile
+    ) {
       Toast.show({
         type: "error",
         text1: "Missing Selection",
@@ -79,8 +137,12 @@ export default function LabDetail() {
     setIsBooking(true);
     try {
       const [hours, minutes] = selectedTime.split(":").map(Number);
-      const bookingDateTime = new Date(selectedDate);
-      bookingDateTime.setHours(hours, minutes, 0, 0);
+      const bookingDateTime = dayjs(selectedDate)
+        .hour(hours)
+        .minute(minutes)
+        .second(0)
+        .millisecond(0)
+        .toDate();
 
       await createReservation({
         labId: lab.id,
@@ -93,6 +155,10 @@ export default function LabDetail() {
         dateTime: bookingDateTime,
         isEmergency: false,
       });
+
+      // Invalidate queries to refresh available slots
+      queryClient.invalidateQueries({ queryKey: ["labSlots", id] });
+      queryClient.invalidateQueries({ queryKey: ["weekAvailability", lab.id] });
 
       Toast.show({
         type: "success",
@@ -256,75 +322,171 @@ export default function LabDetail() {
 
           {/* ── Booking Panel ── */}
           <View style={s.bookingPanel}>
-            <Text style={s.sectionLabel}>SCHEDULE YOUR VISIT</Text>
-            
-            {/* Date Selection */}
-            <View style={{ marginTop: 12 }}>
-              <View style={s.panelSubHeader}>
-                <Calendar size={16} color={COLORS.primary} />
-                <Text style={s.panelSubTitle}>Select Date</Text>
+            {/* Panel Header */}
+            <View style={s.panelHeaderRow}>
+              <View>
+                <Text style={s.panelTitle}>Schedule Appointment</Text>
+                <Text style={s.panelSub}>
+                  Select your preferred date and time
+                </Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dateScroller}>
-                {next7Days.map((date, index) => {
-                  const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-                  const dayNum = date.getDate();
-                  const weekday = date.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
-                  const isActive = lab.workingHours?.[weekday]?.isActive;
-                  const isSelected = selectedDate?.toDateString() === date.toDateString();
-
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      disabled={!isActive}
-                      onPress={() => {
-                        setSelectedDate(date);
-                        setSelectedTime(null);
-                      }}
-                      style={[
-                        s.dateCard,
-                        isSelected && s.dateCardActive,
-                        !isActive && s.dateCardDisabled,
-                      ]}
-                    >
-                      <Text style={[s.dateDay, isSelected && { color: "#fff" }]}>{dayName}</Text>
-                      <Text style={[s.dateNum, isSelected && { color: "#fff" }]}>{dayNum}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              {/* Week navigation */}
+              <View style={s.weekNav}>
+                <TouchableOpacity
+                  style={s.weekNavBtn}
+                  onPress={() => {
+                    const d = new Date(weekStart);
+                    d.setDate(d.getDate() - 7);
+                    if (d >= today) setWeekStart(d);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={s.weekNavArrow}>‹</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.weekNavBtn}
+                  onPress={() => {
+                    const d = new Date(weekStart);
+                    d.setDate(d.getDate() + 7);
+                    setWeekStart(d);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={s.weekNavArrow}>›</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
+            {/* Date Selection */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.datePicker}
+            >
+              {weekDays.map((d, i) => {
+                const weekday = d.fullDay;
+                const isActive = lab.workingHours?.[weekday]?.isActive;
+                const isSelected =
+                  selectedDate?.toDateString() === d.date.toDateString();
+
+                // Check availability
+                const daySlots = weekAvailability ? weekAvailability[i] : [];
+                const hasFutureSlots = daySlots.length > 0;
+                const isFullyBooked =
+                  hasFutureSlots &&
+                  daySlots.every((s: any) =>
+                    typeof s === "string" ? false : s.taken,
+                  );
+
+                const isUnavailable =
+                  !isActive || !hasFutureSlots || isFullyBooked;
+
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    disabled={isUnavailable}
+                    onPress={() => {
+                      setSelectedDate(d.date);
+                      setSelectedTime(null);
+                    }}
+                    style={[
+                      s.dateCard,
+                      isSelected && s.dateCardActive,
+                      isUnavailable && s.dateCardDisabled,
+                    ]}
+                  >
+                    <Text style={[s.dateDay, isSelected && { color: "#fff" }]}>
+                      {d.dayLabel}
+                    </Text>
+                    <Text style={[s.dateNum, isSelected && { color: "#fff" }]}>
+                      {d.dayNum}
+                    </Text>
+                    {isFullyBooked && <Text style={s.takenDayLabel}>full</Text>}
+                    {!isFullyBooked && !hasFutureSlots && isActive && (
+                      <Text style={s.takenDayLabel}>closed</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             {/* Time Selection */}
-            {selectedDate && (
-              <View style={{ marginTop: 24 }}>
-                <View style={s.panelSubHeader}>
-                  <Clock size={16} color={COLORS.primary} />
-                  <Text style={s.panelSubTitle}>Available Times</Text>
-                </View>
-                {slotsLoading ? (
-                  <ActivityIndicator color={COLORS.primary} style={{ marginTop: 15 }} />
-                ) : availableSlots.length > 0 ? (
-                  <View style={s.timeGrid}>
-                    {availableSlots.map((time, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={[s.timeSlot, selectedTime === time && s.timeSlotActive]}
-                        onPress={() => setSelectedTime(time)}
-                      >
-                        <Text style={[s.timeText, selectedTime === time && { color: "#fff" }]}>
-                          {time}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : (
-                  <View style={s.emptySlots}>
-                    <AlertCircle size={20} color="#64748b" />
-                    <Text style={s.emptySlotsText}>Fully booked for this day</Text>
+            <View style={s.slotsSection}>
+              <View style={s.slotsHeader}>
+                <Text style={s.sectionLabel}>AVAILABLE SLOTS</Text>
+                {availableSlots.length > 0 && (
+                  <View style={s.slotsBadge}>
+                    <Text style={s.slotsBadgeText}>
+                      {
+                        availableSlots.filter((s: any) =>
+                          typeof s === "string" ? true : !s.taken,
+                        ).length
+                      }{" "}
+                      slots left
+                    </Text>
                   </View>
                 )}
               </View>
-            )}
+
+              {!selectedDate ? (
+                <Text style={s.slotPrompt}>
+                  Pick a date above to see available times.
+                </Text>
+              ) : slotsLoading ? (
+                <ActivityIndicator
+                  color={COLORS.primary}
+                  style={{ marginTop: 15 }}
+                />
+              ) : availableSlots.length === 0 ? (
+                <View style={s.emptySlots}>
+                  <AlertCircle size={20} color="#64748b" />
+                  <Text style={s.emptySlotsText}>Fully booked for this day</Text>
+                </View>
+              ) : (
+                <View style={s.timeGrid}>
+                  {availableSlots.map((slotObj: any, index) => {
+                    const time =
+                      typeof slotObj === "string" ? slotObj : slotObj?.time;
+                    if (!time) return null;
+
+                    const isTaken =
+                      typeof slotObj === "string" ? false : slotObj.taken;
+                    const isActive = selectedTime === time;
+
+                    // Format 24h → 12h AM/PM
+                    const [hh, mm] = time.split(":").map(Number);
+                    const ampm = hh < 12 ? "AM" : "PM";
+                    const h12 = hh % 12 || 12;
+                    const label = `${String(h12).padStart(2, "0")}:${String(
+                      mm,
+                    ).padStart(2, "0")} ${ampm}`;
+
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        disabled={isTaken}
+                        style={[
+                          s.timeSlot,
+                          isActive && s.timeSlotActive,
+                          isTaken && s.timeSlotTaken,
+                        ]}
+                        onPress={() => setSelectedTime(time)}
+                      >
+                        <Text
+                          style={[
+                            s.timeText,
+                            isActive && { color: "#fff" },
+                            isTaken && s.timeTextTaken,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
 
             {/* Confirm Button */}
             <View style={{ marginTop: 32 }}>
@@ -489,24 +651,85 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
   },
-  panelSubHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-  panelSubTitle: { color: "#fff", fontSize: 15, fontFamily: FONT_FAMILY.headline },
-  dateScroller: { marginTop: 4 },
+  panelHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 24,
+  },
+  panelTitle: { color: "#fff", fontSize: 22, fontFamily: FONT_FAMILY.headline },
+  panelSub: {
+    color: "#64748b",
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.body,
+    marginTop: 2,
+  },
+  weekNav: { flexDirection: "row", gap: 8 },
+  weekNavBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  weekNavArrow: { color: COLORS.onSurface, fontSize: 20, lineHeight: 22 },
+  datePicker: { gap: 10, marginBottom: 24 },
   dateCard: {
     width: 56,
-    height: 70,
+    height: 80,
     borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.03)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
   },
-  dateCardActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  dateCardActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
   dateCardDisabled: { opacity: 0.2 },
   dateDay: { color: "#64748b", fontSize: 10, fontFamily: FONT_FAMILY.label },
-  dateNum: { color: "#fff", fontSize: 16, fontFamily: FONT_FAMILY.display, marginTop: 2 },
+  dateNum: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.display,
+    marginTop: 2,
+  },
+  takenDayLabel: {
+    color: COLORS.error,
+    fontSize: 8,
+    fontFamily: FONT_FAMILY.label,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  slotsSection: { gap: 14, marginTop: 24 },
+  slotsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  slotsBadge: {
+    backgroundColor: "rgba(64,206,243,0.1)",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  slotsBadgeText: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.label,
+  },
+  slotPrompt: {
+    color: "#475569",
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.body,
+    textAlign: "center",
+    paddingVertical: 12,
+  },
   timeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   timeSlot: {
     width: (SW - 40 - 48 - 20) / 3,
@@ -517,10 +740,25 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
   },
-  timeSlotActive: { backgroundColor: "rgba(64,206,243,0.1)", borderColor: COLORS.primary },
+  timeSlotActive: {
+    backgroundColor: "rgba(64,206,243,0.1)",
+    borderColor: COLORS.primary,
+  },
+  timeSlotTaken: {
+    opacity: 0.3,
+    backgroundColor: "rgba(255,255,255,0.02)",
+  },
   timeText: { color: "#cbd5e1", fontSize: 13, fontFamily: FONT_FAMILY.headline },
+  timeTextTaken: {
+    textDecorationLine: "line-through",
+  },
   emptySlots: { alignItems: "center", paddingVertical: 20 },
-  emptySlotsText: { color: "#64748b", fontSize: 13, fontFamily: FONT_FAMILY.body, marginTop: 8 },
+  emptySlotsText: {
+    color: "#64748b",
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.body,
+    marginTop: 8,
+  },
   confirmBtn: { borderRadius: RADIUS.full, overflow: "hidden" },
   confirmBtnDisabled: { opacity: 0.5 },
   confirmBtnGradient: {

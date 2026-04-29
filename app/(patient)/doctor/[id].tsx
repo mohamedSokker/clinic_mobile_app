@@ -31,7 +31,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { COLORS, SPACING, RADIUS, FONT_FAMILY, GRADIENTS } from "@/lib/theme";
 import Toast from "react-native-toast-message";
 import { BackgroundDecor } from "@/components/ui/BackgroundDecor";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs from "dayjs";
 import { Avatar } from "@/components/ui/Avatar";
 
 const { width: SW } = Dimensions.get("window");
@@ -104,6 +105,8 @@ export default function DoctorDetail() {
     enabled: !!doctor,
   });
 
+  const queryClient = useQueryClient();
+
   const handleBook = async () => {
     if (!selectedDate || !selectedTime || !doctor || !user || !profile) {
       Toast.show({ type: "error", text1: "Please select a date and time" });
@@ -112,8 +115,12 @@ export default function DoctorDetail() {
     setBooking(true);
     try {
       const [h, m] = selectedTime.split(":").map(Number);
-      const dt = new Date(selectedDate);
-      dt.setHours(h, m, 0, 0);
+      const bookingDateTime = dayjs(selectedDate)
+        .hour(h)
+        .minute(m)
+        .second(0)
+        .millisecond(0)
+        .toDate();
 
       await createReservation({
         doctorId: doctor.id,
@@ -123,9 +130,15 @@ export default function DoctorDetail() {
         patientMobile: profile.mobile,
         clinicName: doctor.clinicName,
         doctorName: doctor.doctorName,
-        dateTime: dt,
+        dateTime: bookingDateTime,
         symptoms: symptoms.trim(),
         isEmergency: false,
+      });
+
+      // Invalidate queries to refresh available slots
+      queryClient.invalidateQueries({ queryKey: ["availableSlots", id] });
+      queryClient.invalidateQueries({
+        queryKey: ["weekAvailability", doctor.id],
       });
 
       Toast.show({
