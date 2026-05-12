@@ -59,15 +59,19 @@ export default function ReservationDetailsScreen() {
     try {
       let data: Reservation[] = [];
       const date = new Date(res.dateTime);
-      
+
       if (res.doctorId) {
         data = await getReservationsForDoctor(res.doctorId, date);
       } else if (res.labId) {
         data = await getReservationsForLab(res.labId, date);
       }
-      
+
       // Sort by time/position
-      const sorted = data.sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
+      const sorted = data.sort(
+        (a, b) =>
+          new Date(a.entryTime ?? a.dateTime).getTime() -
+          new Date(b.entryTime ?? b.dateTime).getTime(),
+      );
       setQueue(sorted);
     } catch (err) {
       console.error("Fetch queue error:", err);
@@ -100,13 +104,19 @@ export default function ReservationDetailsScreen() {
     );
   }
 
-  const entityName = targetRes.doctorName || targetRes.labName || "Medical Consultation";
+  const entityName =
+    targetRes.doctor?.doctorName ||
+    targetRes.lab?.labName ||
+    "Medical Consultation";
 
   return (
     <View style={s.container}>
       <BackgroundDecor />
       <SafeAreaView edges={["bottom"]} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={s.scroll}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={s.header}>
             <Text style={s.headerSubtitle}>Queue Tracker</Text>
             <Text style={s.headerTitle}>{entityName}</Text>
@@ -116,31 +126,45 @@ export default function ReservationDetailsScreen() {
             {queue.map((item, index) => {
               const isMine = item.id === targetRes.id;
               const duration = calculateDuration(item);
-              const time = dayjs(item.dateTime).format("hh:mm A");
-              const photo = item.patientPhotoURL || item.patient?.user?.photoURL;
-              
+              const time = dayjs(item.entryTime ?? item.dateTime).format(
+                "hh:mm A",
+              );
+              const photo =
+                item.patientPhotoURL || item.patient?.user?.photoURL;
+
               return (
-                <View 
-                  key={item.id} 
-                  style={[
-                    s.card, 
-                    isMine && s.activeCard
-                  ]}
-                >
+                <View key={item.id} style={[s.card, isMine && s.activeCard]}>
                   <View style={s.cardLeft}>
                     <View style={s.timeBox}>
-                      <Text style={[s.timeText, isMine && s.activeText]}>{time}</Text>
-                      {duration && <Text style={s.durationText}>{duration}</Text>}
+                      <Text style={[s.timeText, isMine && s.activeText]}>
+                        {time}
+                      </Text>
+                      {duration && (
+                        <Text style={s.durationText}>{duration}</Text>
+                      )}
                     </View>
                     <View style={s.lineBox}>
-                      <View style={[s.dot, item.status === 'done' ? s.dotDone : (item.status === 'inside' ? s.dotActive : s.dotPending)]} />
+                      <View
+                        style={[
+                          s.dot,
+                          item.status === "done"
+                            ? s.dotDone
+                            : item.status === "inside"
+                              ? s.dotActive
+                              : s.dotPending,
+                        ]}
+                      />
                       {index < queue.length - 1 && <View style={s.line} />}
                     </View>
                   </View>
 
                   <View style={s.cardBody}>
-                    <Image 
-                      source={photo ? { uri: photo } : require("@/assets/doctor_default.png")} 
+                    <Image
+                      source={
+                        isMine
+                          ? { uri: photo }
+                          : require("@/assets/doctor_default.png")
+                      }
                       style={s.avatar}
                     />
                     <View style={s.info}>
@@ -148,14 +172,23 @@ export default function ReservationDetailsScreen() {
                         {item.patientName} {isMine && "(You)"}
                       </Text>
                       <View style={s.statusBadge}>
-                        <Text style={[s.statusText, { color: getStatusColor(item.status) }]}>
+                        <Text
+                          style={[
+                            s.statusText,
+                            { color: getStatusColor(item.status) },
+                          ]}
+                        >
                           {item.status.toUpperCase()}
                         </Text>
                       </View>
                     </View>
                     {isMine && (
                       <View style={s.turnIndicator}>
-                        <MaterialIcons name="stars" size={24} color={COLORS.primary} />
+                        <MaterialIcons
+                          name="stars"
+                          size={24}
+                          color={COLORS.primary}
+                        />
                       </View>
                     )}
                   </View>
@@ -171,21 +204,41 @@ export default function ReservationDetailsScreen() {
 
 function getStatusColor(status: string) {
   switch (status) {
-    case "done": return "#00E676";
-    case "inside": return "#FFD700";
-    case "cancelled": return "rgba(255,255,255,0.3)";
-    default: return COLORS.primary;
+    case "done":
+      return "#00E676";
+    case "inside":
+      return "#FFD700";
+    case "cancelled":
+      return "rgba(255,255,255,0.3)";
+    default:
+      return COLORS.primary;
   }
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#070e1a" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#070e1a" },
-  errorContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#070e1a" },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#070e1a",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#070e1a",
+  },
   errorText: { color: "#fff", fontSize: 16 },
   scroll: { padding: 20 },
   header: { marginBottom: 24 },
-  headerSubtitle: { color: COLORS.primary, fontSize: 12, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 },
+  headerSubtitle: {
+    color: COLORS.primary,
+    fontSize: 12,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
   headerTitle: { color: "#fff", fontSize: 24, fontWeight: "800" },
   listContainer: { paddingLeft: 10 },
   card: {
@@ -209,7 +262,12 @@ const s = StyleSheet.create({
   },
   timeText: { color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: "600" },
   activeText: { color: COLORS.primary, fontWeight: "800" },
-  durationText: { color: "#00E676", fontSize: 10, marginTop: 2, fontWeight: "700" },
+  durationText: {
+    color: "#00E676",
+    fontSize: 10,
+    marginTop: 2,
+    fontWeight: "700",
+  },
   lineBox: {
     flex: 1,
     alignItems: "center",

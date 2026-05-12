@@ -168,51 +168,51 @@ export default function DoctorRegister() {
       }
 
       // 2. Process Payment (if not already done)
-      if (!paymentReady) {
-        const intentRes = await api.post("/payments/create-intent", {
-          amount: 2400,
-          userId: user.uid,
-          role: "doctor",
-          email: data.email.trim().toLowerCase(),
-          name: data.name.trim(),
-        });
+      // if (!paymentReady) {
+      //   const intentRes = await api.post("/payments/create-intent", {
+      //     amount: 2400,
+      //     userId: user.uid,
+      //     role: "doctor",
+      //     email: data.email.trim().toLowerCase(),
+      //     name: data.name.trim(),
+      //   });
 
-        const { clientSecret, customerId, ephemeralKey } = intentRes.data;
+      //   const { clientSecret, customerId, ephemeralKey } = intentRes.data;
 
-        const { error: initError } = await initPaymentSheet({
-          paymentIntentClientSecret: clientSecret,
-          customerId,
-          customerEphemeralKeySecret: ephemeralKey,
-          merchantDisplayName: "Vitreous Clinic",
-          appearance: {
-            colors: {
-              primary: COLORS.primary,
-              background: "#070e1a",
-              componentBackground: "#1c2637",
-              componentBorder: "#FFFFFF1A",
-              placeholderText: "#FFFFFF66",
-              primaryText: "#FFFFFF",
-              secondaryText: "#FFFFFF99",
-            },
-          },
-        });
+      //   const { error: initError } = await initPaymentSheet({
+      //     paymentIntentClientSecret: clientSecret,
+      //     customerId,
+      //     customerEphemeralKeySecret: ephemeralKey,
+      //     merchantDisplayName: "Vitreous Clinic",
+      //     appearance: {
+      //       colors: {
+      //         primary: COLORS.primary,
+      //         background: "#070e1a",
+      //         componentBackground: "#1c2637",
+      //         componentBorder: "#FFFFFF1A",
+      //         placeholderText: "#FFFFFF66",
+      //         primaryText: "#FFFFFF",
+      //         secondaryText: "#FFFFFF99",
+      //       },
+      //     },
+      //   });
 
-        if (initError) throw initError;
+      //   if (initError) throw initError;
 
-        const { error: paymentError } = await presentPaymentSheet();
-        if (paymentError) {
-          if (paymentError.code === "Canceled") {
-            Toast.show({
-              type: "info",
-              text1: "Payment Cancelled",
-              text2: "Subscription is required to join the network.",
-            });
-            return;
-          }
-          throw paymentError;
-        }
-        setPaymentReady(true);
-      }
+      //   const { error: paymentError } = await presentPaymentSheet();
+      //   if (paymentError) {
+      //     if (paymentError.code === "Canceled") {
+      //       Toast.show({
+      //         type: "info",
+      //         text1: "Payment Cancelled",
+      //         text2: "Subscription is required to join the network.",
+      //       });
+      //       return;
+      //     }
+      //     throw paymentError;
+      //   }
+      //   setPaymentReady(true);
+      // }
 
       // 4. Photo Upload (if exists)
       let photoURL = undefined;
@@ -402,7 +402,9 @@ export default function DoctorRegister() {
                 {/* Enhanced Location Field with Search */}
                 <View style={[styles.fieldColumn, { zIndex: 100 }]}>
                   <Text style={styles.fieldLabel}>LOCATION</Text>
-                  <View style={{ position: "relative", justifyContent: "center" }}>
+                  <View
+                    style={{ position: "relative", justifyContent: "center" }}
+                  >
                     <TextInput
                       style={styles.input}
                       placeholder="e.g. 123 Clinic St, City"
@@ -578,8 +580,8 @@ export default function DoctorRegister() {
 
                   <View style={styles.fieldColumn}>
                     <Text style={styles.fieldLabel}>CONSULTATION FEE</Text>
-                    <View style={styles.inputWithIcon}>
-                      <Text style={styles.inputPrefix}>$</Text>
+                    <View>
+                      <Text>$</Text>
                       <Controller
                         control={control}
                         name="visitCost"
@@ -734,7 +736,7 @@ export default function DoctorRegister() {
                 ))}
               </View>
 
-              <View style={styles.pricingBox}>
+              {/* <View style={styles.pricingBox}>
                 <View>
                   <Text style={styles.billingType}>ANNUAL BILLING</Text>
                   <Text style={styles.priceText}>
@@ -744,9 +746,9 @@ export default function DoctorRegister() {
                 <View style={styles.saveBadge}>
                   <Text style={styles.saveBadgeText}>Save 20%</Text>
                 </View>
-              </View>
+              </View> */}
 
-              <View style={{ gap: 8 }}>
+              {/* <View style={{ gap: 8 }}>
                 <Text style={styles.paymentDetailsLabel}>PAYMENT DETAILS</Text>
                 <View style={styles.creditCardBox}>
                   <View style={styles.creditCardLeft}>
@@ -763,11 +765,12 @@ export default function DoctorRegister() {
                     <Text style={styles.changeLink}>Change</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </View> */}
 
               <GradientButton
                 onPress={handleSubmit(onSubmit)}
-                label="Complete Subscription & Payment"
+                // label="Complete Subscription & Payment"
+                label="Sign Up"
                 size="lg"
                 variant="secondary"
                 loading={loading}

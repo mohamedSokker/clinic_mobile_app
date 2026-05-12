@@ -21,6 +21,7 @@ import {
   Video,
   Home,
   Check,
+  Clock,
 } from "lucide-react-native";
 import { getDoctor } from "@/services/doctorService";
 import {
@@ -59,13 +60,16 @@ export default function DoctorDetail() {
   today.setHours(0, 0, 0, 0);
 
   const [weekStart, setWeekStart] = useState(today);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [consultationType, setConsultationType] = useState<
     "video" | "inperson"
   >("video");
   const [symptoms, setSymptoms] = useState("");
   const [booking, setBooking] = useState(false);
+  const [isQueueModalVisible, setIsQueueModalVisible] = useState(false);
+  const [estimatedSlot, setEstimatedSlot] = useState<{
+    date: Date;
+    time: string;
+  } | null>(null);
 
   const weekDays = buildWeekDays(weekStart);
 
@@ -75,19 +79,7 @@ export default function DoctorDetail() {
     enabled: !!id,
   });
 
-  const { data: availableSlots = [], isLoading: slotsLoading } = useQuery({
-    queryKey: ["availableSlots", id, selectedDate?.toISOString()],
-    queryFn: () =>
-      getAvailableTimeSlots(
-        doctor!.id,
-        selectedDate!,
-        doctor!.slotDurationMinutes,
-        doctor!.schedule,
-      ),
-    enabled: !!doctor && !!selectedDate,
-  });
-
-  const { data: weekAvailability } = useQuery({
+  const { data: weekAvailability, isLoading: slotsLoading } = useQuery({
     queryKey: ["weekAvailability", doctor?.id, weekStart.toDateString()],
     queryFn: async () => {
       const days = buildWeekDays(weekStart);
@@ -107,15 +99,39 @@ export default function DoctorDetail() {
 
   const queryClient = useQueryClient();
 
-  const handleBook = async () => {
-    if (!selectedDate || !selectedTime || !doctor || !user || !profile) {
-      Toast.show({ type: "error", text1: "Please select a date and time" });
+  const findNextAvailableSlot = () => {
+    if (!weekAvailability) return null;
+    for (let i = 0; i < weekAvailability.length; i++) {
+      const daySlots = weekAvailability[i];
+      const date = weekDays[i].date;
+      const firstFree = daySlots.find((s) => !s.taken);
+      if (firstFree) {
+        return { date, time: firstFree.time };
+      }
+    }
+    return null;
+  };
+
+  const handleJoinQueuePress = () => {
+    const slot = findNextAvailableSlot();
+    if (!slot) {
+      Toast.show({
+        type: "error",
+        text1: "No available slots",
+        text2: "The doctor has no available time in the next 7 days.",
+      });
       return;
     }
+    setEstimatedSlot(slot);
+    setIsQueueModalVisible(true);
+  };
+
+  const handleConfirmJoin = async () => {
+    if (!estimatedSlot || !doctor || !user || !profile) return;
     setBooking(true);
     try {
-      const [h, m] = selectedTime.split(":").map(Number);
-      const bookingDateTime = dayjs(selectedDate)
+      const [h, m] = estimatedSlot.time.split(":").map(Number);
+      const bookingDateTime = dayjs(estimatedSlot.date)
         .hour(h)
         .minute(m)
         .second(0)
@@ -135,16 +151,16 @@ export default function DoctorDetail() {
         isEmergency: false,
       });
 
-      // Invalidate queries to refresh available slots
       queryClient.invalidateQueries({ queryKey: ["availableSlots", id] });
       queryClient.invalidateQueries({
         queryKey: ["weekAvailability", doctor.id],
       });
 
+      setIsQueueModalVisible(false);
       Toast.show({
         type: "success",
-        text1: "✅ Booking Confirmed!",
-        text2: `${doctor.clinicName} at ${selectedTime}`,
+        text1: "✅ Reservation Confirmed!",
+        text2: `Queue joined for ${estimatedSlot.time}`,
       });
       router.push(`/(patient)/queue/${doctor.id}` as any);
     } catch {
@@ -285,174 +301,46 @@ export default function DoctorDetail() {
 
           {/* ── Booking Panel (glass) ── */}
           <View style={s.bookingPanel}>
-            {/* Panel Header */}
             <View style={s.panelHeaderRow}>
               <View>
-                <Text style={s.panelTitle}>Schedule Appointment</Text>
+                <Text style={s.panelTitle}>Join Clinic Queue</Text>
                 <Text style={s.panelSub}>
-                  Select your preferred date and time
+                  Quickly join the queue and get notified
                 </Text>
-              </View>
-              {/* Week navigation */}
-              <View style={s.weekNav}>
-                <TouchableOpacity
-                  style={s.weekNavBtn}
-                  onPress={() => {
-                    const d = new Date(weekStart);
-                    d.setDate(d.getDate() - 7);
-                    if (d >= today) setWeekStart(d);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.weekNavArrow}>‹</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={s.weekNavBtn}
-                  onPress={() => {
-                    const d = new Date(weekStart);
-                    d.setDate(d.getDate() + 7);
-                    setWeekStart(d);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.weekNavArrow}>›</Text>
-                </TouchableOpacity>
               </View>
             </View>
 
-            {/* ── Date Picker Row (7 days) ── */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.datePicker}
-            >
-              {weekDays.map((d, i) => {
-                const isWorkDay = (doctor?.workingDays || []).includes(
-                  d.dayLabel,
-                );
-                const isSelected =
-                  selectedDate?.toDateString() === d.date.toDateString();
-
-                // Check if fully booked or all slots passed
-                const daySlots = weekAvailability ? weekAvailability[i] : [];
-                const hasFutureSlots = daySlots.length > 0;
-                const isFullyBooked =
-                  hasFutureSlots && daySlots.every((s) => s.taken);
-
-                const isUnavailable =
-                  !isWorkDay || !hasFutureSlots || isFullyBooked;
-
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    onPress={() => {
-                      if (isUnavailable) return;
-                      setSelectedDate(d.date);
-                      setSelectedTime(null);
-                    }}
-                    style={[
-                      s.dateCell,
-                      isSelected && s.dateCellActive,
-                      isUnavailable && s.dateCellDisabled,
-                      isFullyBooked && s.dateCellTaken,
-                    ]}
-                    activeOpacity={!isUnavailable ? 0.8 : 1}
-                  >
-                    <Text
-                      style={[
-                        s.dateDayLabel,
-                        isSelected && s.dateDayLabelActive,
-                        isUnavailable && { opacity: 0.3 },
-                      ]}
+            {/* ── Working Days Display (Non-clickable) ── */}
+            <View style={{ gap: 12 }}>
+              <Text style={s.sectionLabel}>WORKING DAYS AVAILABILITY</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.datePicker}
+              >
+                {weekDays.map((d, i) => {
+                  const isWorkDay = (doctor?.workingDays || []).includes(
+                    d.dayLabel,
+                  );
+                  return (
+                    <View
+                      key={i}
+                      style={[s.dateCell, { opacity: isWorkDay ? 1 : 0.5 }]}
                     >
-                      {d.dayLabel.toUpperCase()}
-                    </Text>
-                    <Text
-                      style={[
-                        s.dateDayNum,
-                        isSelected && s.dateDayNumActive,
-                        isUnavailable && { opacity: 0.3 },
-                      ]}
-                    >
-                      {d.dayNum}
-                    </Text>
-                    {isFullyBooked && <Text style={s.takenDayLabel}>full</Text>}
-                    {!isFullyBooked && !hasFutureSlots && isWorkDay && (
-                      <Text style={s.takenDayLabel}>closed</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* ── Available Slots ── */}
-            <View style={s.slotsSection}>
-              <View style={s.slotsHeader}>
-                <Text style={s.sectionLabel}>AVAILABLE SLOTS</Text>
-                {availableSlots.length > 0 && (
-                  <View style={s.slotsBadge}>
-                    <Text style={s.slotsBadgeText}>
-                      {availableSlots.length} slots left
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {!selectedDate ? (
-                <Text style={s.slotPrompt}>
-                  Pick a date above to see available times.
-                </Text>
-              ) : slotsLoading ? (
-                <Text style={s.slotPrompt}>Loading slots…</Text>
-              ) : availableSlots.length === 0 ? (
-                <Text style={s.slotPrompt}>
-                  No slots available for this date.
-                </Text>
-              ) : (
-                <View style={s.slotsGrid}>
-                  {availableSlots.map((slotObj, i) => {
-                    const slot = slotObj.time;
-                    const isTaken = slotObj.taken;
-                    const active = selectedTime === slot;
-                    // Format 24h → 12h AM/PM
-                    const [hh, mm] = slot.split(":").map(Number);
-                    const ampm = hh < 12 ? "AM" : "PM";
-                    const h12 = hh % 12 || 12;
-                    const label = `${String(h12).padStart(2, "0")}:${String(mm).padStart(2, "0")} ${ampm}`;
-                    return (
-                      <TouchableOpacity
-                        key={i}
-                        onPress={() => !isTaken && setSelectedTime(slot)}
-                        style={[
-                          s.slotCell,
-                          active && s.slotCellActive,
-                          isTaken && s.slotCellTaken,
-                        ]}
-                        activeOpacity={isTaken ? 1 : 0.8}
-                        disabled={isTaken}
-                      >
-                        <Text
-                          style={[
-                            s.slotText,
-                            active && s.slotTextActive,
-                            isTaken && s.slotTextTaken,
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                        {/* {isTaken && <Text style={s.takenText}>taken</Text>} */}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
+                      <Text style={s.dateDayLabel}>
+                        {d.dayLabel.toUpperCase()}
+                      </Text>
+                      <Text style={s.dateDayNum}>{d.dayNum}</Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             {/* ── Consultation Type ── */}
             <View style={s.consultSection}>
               <Text style={s.sectionLabel}>CONSULTATION TYPE</Text>
               <View style={s.consultRow}>
-                {/* Video Call */}
                 <TouchableOpacity
                   style={[
                     s.consultCard,
@@ -481,7 +369,6 @@ export default function DoctorDetail() {
                   )}
                 </TouchableOpacity>
 
-                {/* In-Person */}
                 <TouchableOpacity
                   style={[
                     s.consultCard,
@@ -518,25 +405,23 @@ export default function DoctorDetail() {
             </View>
 
             {/* ── Optional symptoms ── */}
-            {selectedDate && selectedTime && (
-              <View style={s.symptomsSection}>
-                <Text style={s.sectionLabel}>SYMPTOMS / NOTES (OPTIONAL)</Text>
-                <TextInput
-                  style={s.symptomsInput}
-                  placeholder="Describe your current medical condition…"
-                  placeholderTextColor="rgba(255,255,255,0.15)"
-                  value={symptoms}
-                  onChangeText={setSymptoms}
-                  multiline
-                  selectionColor={COLORS.primary}
-                />
-              </View>
-            )}
+            <View style={s.symptomsSection}>
+              <Text style={s.sectionLabel}>SYMPTOMS / NOTES (OPTIONAL)</Text>
+              <TextInput
+                style={s.symptomsInput}
+                placeholder="Describe your current medical condition…"
+                placeholderTextColor="rgba(255,255,255,0.15)"
+                value={symptoms}
+                onChangeText={setSymptoms}
+                multiline
+                selectionColor={COLORS.primary}
+              />
+            </View>
 
-            {/* ── Confirm button — matches HTML's gradient pill ── */}
+            {/* ── Join Queue button ── */}
             <TouchableOpacity
-              onPress={handleBook}
-              disabled={!selectedDate || !selectedTime || booking}
+              onPress={handleJoinQueuePress}
+              disabled={slotsLoading || booking}
               activeOpacity={0.9}
               style={s.confirmBtnWrap}
             >
@@ -546,20 +431,117 @@ export default function DoctorDetail() {
                 end={{ x: 1, y: 0 }}
                 style={[
                   s.confirmBtn,
-                  (!selectedDate || !selectedTime) && s.confirmBtnDisabled,
+                  (slotsLoading || booking) && s.confirmBtnDisabled,
                 ]}
               >
                 <Text style={s.confirmBtnText}>
-                  {booking
-                    ? "CONFIRMING…"
-                    : selectedTime
-                      ? `CONFIRM APPOINTMENT — ${selectedTime}`
-                      : "SELECT DATE & TIME"}
+                  {slotsLoading
+                    ? "CHECKING QUEUE…"
+                    : booking
+                      ? "JOINING…"
+                      : "JOIN CLINIC QUEUE"}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
         </ScrollView>
+      </View>
+
+      {/* ── Queue Confirmation Modal ── */}
+      <JoinQueueModal
+        visible={isQueueModalVisible}
+        onClose={() => setIsQueueModalVisible(false)}
+        onConfirm={handleConfirmJoin}
+        estimatedSlot={estimatedSlot}
+        loading={booking}
+        doctorName={doctor.doctorName}
+      />
+    </View>
+  );
+}
+
+function JoinQueueModal({
+  visible,
+  onClose,
+  onConfirm,
+  estimatedSlot,
+  loading,
+  doctorName,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  estimatedSlot: { date: Date; time: string } | null;
+  loading: boolean;
+  doctorName: string;
+}) {
+  if (!estimatedSlot) return null;
+
+  const dateLabel = dayjs(estimatedSlot.date).format("dddd, MMM D");
+  // Format time for display
+  const [hh, mm] = estimatedSlot.time.split(":").map(Number);
+  const ampm = hh < 12 ? "AM" : "PM";
+  const h12 = hh % 12 || 12;
+  const timeLabel = `${h12}:${String(mm).padStart(2, "0")} ${ampm}`;
+
+  return (
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          backgroundColor: "rgba(0,0,0,0.8)",
+          zIndex: 999,
+          justifyContent: "center",
+          alignItems: "center",
+          display: visible ? "flex" : "none",
+        },
+      ]}
+    >
+      <View style={s.modalContainer}>
+        <LinearGradient
+          colors={["rgba(30,41,59,0.95)", "rgba(15,23,42,0.98)"] as any}
+          style={s.modalContent}
+        >
+          <View style={s.modalHeader}>
+            <View style={s.modalIcon}>
+              <Clock size={32} color={COLORS.primary} />
+            </View>
+            <Text style={s.modalTitle}>Join Queue</Text>
+            <Text style={s.modalSub}>
+              Confirm your reservation with {doctorName}
+            </Text>
+          </View>
+
+          <View style={s.modalTimeBox}>
+            <Text style={s.modalDateLabel}>{dateLabel}</Text>
+            <Text style={s.modalTimeValue}>{timeLabel}</Text>
+            <Text style={s.modalTimeSub}>Estimated Appointment Time</Text>
+          </View>
+
+          <View style={s.modalFooter}>
+            <TouchableOpacity
+              onPress={onClose}
+              disabled={loading}
+              style={[s.modalBtn, s.modalBtnSecondary]}
+            >
+              <Text style={s.modalBtnTextSecondary}>CANCEL</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={onConfirm}
+              disabled={loading}
+              style={[s.modalBtn, s.modalBtnPrimary]}
+            >
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.primaryContainer]}
+                style={StyleSheet.absoluteFill}
+              />
+              <Text style={s.modalBtnTextPrimary}>
+                {loading ? "JOINING..." : "CONFIRM"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
       </View>
     </View>
   );
@@ -701,19 +683,8 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.body,
     marginTop: 2,
   },
-  weekNav: { flexDirection: "row", gap: 8 },
-  weekNavBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  weekNavArrow: { color: COLORS.onSurface, fontSize: 20, lineHeight: 22 },
 
-  // Date picker
+  // Date picker (visual only)
   datePicker: { gap: 10 },
   dateCell: {
     width: 56,
@@ -723,68 +694,112 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  dateCellActive: { backgroundColor: COLORS.primary },
-  dateCellDisabled: { opacity: 0.3 },
   dateDayLabel: {
     color: "rgba(255,255,255,0.45)",
     fontSize: 9,
     fontFamily: FONT_FAMILY.label,
     letterSpacing: 1,
   },
-  dateDayLabelActive: { color: COLORS.onPrimary, opacity: 0.8 },
   dateDayNum: {
     color: COLORS.onSurface,
     fontSize: 18,
     fontFamily: FONT_FAMILY.display,
   },
-  dateDayNumActive: { color: COLORS.onPrimary },
-
-  // Slots
-  slotsSection: { gap: 14 },
-  slotsHeader: {
-    flexDirection: "row",
+  // Modal
+  modalContainer: {
+    width: "85%",
+    maxWidth: 400,
+    borderRadius: 32,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  modalContent: {
+    padding: 32,
+    gap: 28,
+  },
+  modalHeader: {
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
   },
-  slotsBadge: {
+  modalIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "rgba(64,206,243,0.1)",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
   },
-  slotsBadgeText: {
-    color: COLORS.primary,
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.label,
+  modalTitle: {
+    color: "#fff",
+    fontSize: 24,
+    fontFamily: FONT_FAMILY.display,
+    textAlign: "center",
   },
-  slotPrompt: {
-    color: "#475569",
-    fontSize: 13,
+  modalSub: {
+    color: "#94a3b8",
+    fontSize: 14,
     fontFamily: FONT_FAMILY.body,
     textAlign: "center",
-    paddingVertical: 12,
   },
-  slotsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  slotCell: {
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    minWidth: (SW - 32 - 48 - 20) / 3,
+  modalTimeBox: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 24,
+    padding: 24,
     alignItems: "center",
-    backgroundColor: COLORS.surfaceContainerHigh,
+    gap: 4,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
   },
-  slotCellActive: {
-    borderColor: "rgba(64,206,243,0.45)",
-    backgroundColor: "rgba(64,206,243,0.1)",
+  modalDateLabel: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
-  slotText: {
-    color: "#cbd5e1",
-    fontSize: 13,
-    fontFamily: FONT_FAMILY.bodyMedium,
+  modalTimeValue: {
+    color: "#fff",
+    fontSize: 32,
+    fontFamily: FONT_FAMILY.display,
+    marginVertical: 4,
   },
-  slotTextActive: { color: COLORS.primary, fontFamily: FONT_FAMILY.label },
+  modalTimeSub: {
+    color: "#475569",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
+  },
+  modalFooter: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  modalBtnSecondary: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  modalBtnPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  modalBtnTextSecondary: {
+    color: "#94a3b8",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
+  },
+  modalBtnTextPrimary: {
+    color: "#fff",
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.label,
+    letterSpacing: 1,
+  },
 
   // Consultation type
   consultSection: { gap: 14 },
@@ -796,7 +811,7 @@ const s = StyleSheet.create({
     gap: 12,
     padding: 14,
     borderRadius: 16,
-    backgroundColor: COLORS.surfaceContainerLow,
+    backgroundColor: "rgba(255,255,255,0.02)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
   },
@@ -861,33 +876,5 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.display,
     letterSpacing: 1.5,
     textTransform: "uppercase",
-  },
-  dateCellTaken: {
-    backgroundColor: "rgba(215, 56, 59, 0.05)",
-    borderColor: "rgba(215, 56, 59, 0.1)",
-  },
-  takenDayLabel: {
-    fontSize: 8,
-    color: COLORS.error,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    position: "absolute",
-    bottom: 4,
-  },
-  slotCellTaken: {
-    backgroundColor: "rgba(255,255,255,0.02)",
-    borderColor: "rgba(255,255,255,0.05)",
-    opacity: 0.5,
-  },
-  slotTextTaken: {
-    color: "rgba(255,255,255,0.3)",
-    textDecorationLine: "line-through",
-  },
-  takenText: {
-    fontSize: 8,
-    color: COLORS.error,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    marginTop: 2,
   },
 });
